@@ -1,0 +1,11 @@
+{
+  "name": "metro-widget",
+  "main": "worker.js",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    // Everything at the repo root is served as a static file, except the
+    // entries listed in .assetsignore.
+    "directory": "./",
+    "binding": "ASSETS"
+  }
+}
