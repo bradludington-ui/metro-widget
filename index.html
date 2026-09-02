@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Next Train</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0A0B0D">
+<style>
+  :root{
+    --chassis:#3B3733; --chassis-hi:#57514A;
+    --board:#0A0B0D; --led:#FFB000; --led-dim:#5A3F0C; --led-soft:#B37C08;
+    --blue:#0077C0; --go:#E8402A; --concrete:#B8B3AB; --ink:#E8E4DE;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:#15171A;color:var(--ink);
+    font:400 13px/1.4 "Helvetica Neue",Helvetica,Arial,sans-serif;
+    display:flex;align-items:flex-end;justify-content:flex-end;
+    -webkit-font-smoothing:antialiased}
+  #app{width:100%;max-width:400px;height:100%;max-height:100vh;
+    display:flex;flex-direction:column;background:var(--chassis);
+    border-left:1px solid #000;overflow:hidden;position:relative}
+
+  header{display:flex;align-items:center;gap:9px;padding:9px 12px;
+    background:linear-gradient(180deg,var(--chassis-hi),var(--chassis));
+    border-bottom:1px solid #221F1C;flex:0 0 auto}
+  .mark{width:22px;height:22px;border-radius:50%;background:var(--concrete);
+    color:#2A2724;display:grid;place-items:center;font-weight:700;font-size:13px;
+    letter-spacing:-.5px;flex:0 0 auto}
+  .where{flex:1;min-width:0}
+  .where b{display:block;font-size:12.5px;font-weight:600;letter-spacing:.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .where b i{font-style:normal;color:#8F8880;padding:0 3px}
+  .where span{display:block;font-size:10.5px;color:#A49C93;margin-top:1px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#5A5450;flex:0 0 auto;
+    transition:background .3s}
+  .dot.on{background:#5FD08A;box-shadow:0 0 6px #5FD08A}
+  .dot.err{background:var(--go);box-shadow:0 0 6px var(--go)}
+
+  .board{background:var(--board);flex:1 1 auto;display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+    font-family:"DejaVu Sans Mono",Consolas,"Courier New",monospace}
+  .board::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;opacity:.75}
+  .vcols,.vrow{grid-template-columns:34px 56px 1fr 42px !important}
+  .vrow>span{white-space:nowrap}
+  .cols{display:grid;grid-template-columns:34px 34px 1fr 46px;gap:6px;
+    padding:7px 12px 4px;color:var(--led-soft);font-size:10px;letter-spacing:.14em;
+    border-bottom:1px solid #1E1A12}
+  .cols i{font-style:normal}
+  .cols i:last-child{text-align:right}
+  .strip{padding:5px 12px 3px;font:600 9.5px/1 "Helvetica Neue",Arial,sans-serif;
+    letter-spacing:.18em;color:#7A6A3A;background:#0E0F12;
+    border-top:1px solid #1E1A12;display:flex;gap:7px;align-items:baseline}
+  .strip:first-child{border-top:0}
+  .strip span{font-weight:400;letter-spacing:.04em;color:#5A5348}
+  .board{overflow-y:auto}
+  #rows,#vrows{padding:2px 0 4px}
+  .row{display:grid;grid-template-columns:34px 34px 1fr 46px;gap:6px;align-items:center;
+    padding:5px 12px;color:var(--led);font-size:14.5px;
+    border-bottom:1px solid rgba(255,176,0,.07)}
+  .row.past{color:var(--led-dim)}
+  .row.target{background:rgba(255,176,0,.07)}
+  .ln{display:grid;place-items:center;width:22px;height:18px;border-radius:2px;
+    background:var(--blue);color:#fff;font-size:10px;font-weight:700;letter-spacing:.03em}
+  .row.past .ln{opacity:.35}
+  .dest{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
+  .min{text-align:right;font-variant-numeric:tabular-nums}
+  .empty{padding:16px 12px;color:var(--led-dim);font-size:12.5px;line-height:1.6}
+  .vrow{display:grid;gap:6px;align-items:center;padding:5px 12px;color:var(--led);
+    font-size:14px;border-bottom:1px solid rgba(255,176,0,.07)}
+  .vrow.past{color:var(--led-dim)}
+  .vrow.target{background:rgba(255,176,0,.07)}
+  .trn{display:grid;place-items:center;height:18px;border-radius:2px;background:#5A4A22;
+    color:#FFD98A;font-size:10px;font-weight:700}
+  .vstat{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ontime{color:#6FCF97}
+  .late{color:#FF8A6B}
+  .noline{color:#6E6659}
+
+  .call{flex:0 0 auto;padding:12px 12px 14px;border-top:1px solid #1E1A12;
+    background:#08090B;position:relative}
+  .call .lede{font-size:10px;letter-spacing:.16em;color:var(--led-soft);
+    font-family:"Helvetica Neue",Arial,sans-serif}
+  .big{display:flex;align-items:baseline;gap:8px;margin-top:2px;
+    font-family:"DejaVu Sans Mono",Consolas,"Courier New",monospace}
+  .big em{font-style:normal;font-size:54px;line-height:.95;font-weight:700;
+    color:var(--led);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .big small{font-size:12px;color:var(--led-soft);font-family:"Helvetica Neue",Arial,sans-serif}
+  .sub{margin-top:4px;font-size:11.5px;color:#8A8078;
+    font-family:"Helvetica Neue",Arial,sans-serif}
+
+  #app.heads .call{background:#1A1206}
+  #app.heads .big em{color:#FFD34D}
+  #app.go{background:var(--go);animation:beat 1s steps(1,end) infinite}
+  #app.go header{background:linear-gradient(180deg,#F0563F,var(--go));border-bottom-color:#8E1F12}
+  #app.go .call{background:#2A0A05}
+  #app.go .big em{color:#FF7A63}
+  #app.go .lede{color:#FF9C88}
+  @keyframes beat{0%,49%{box-shadow:inset 0 0 0 3px var(--go)}50%,100%{box-shadow:inset 0 0 0 3px transparent}}
+  @media (prefers-reduced-motion:reduce){#app.go{animation:none;box-shadow:inset 0 0 0 3px var(--go)}}
+
+  footer{flex:0 0 auto;display:flex;gap:5px;align-items:center;padding:8px 10px;
+    background:var(--chassis);border-top:1px solid #221F1C}
+  button{font:600 11.5px/1 "Helvetica Neue",Arial,sans-serif;color:var(--ink);
+    background:#4A443E;border:1px solid #221F1C;border-radius:3px;padding:7px 9px;cursor:pointer}
+  button:hover{background:#585149}
+  button:focus-visible{outline:2px solid var(--led);outline-offset:1px}
+  button.primary{background:var(--blue);border-color:#005A93}
+  button.primary:hover{background:#0089DB}
+  button.quiet{background:transparent;color:#A49C93;padding:7px 5px}
+  .legpick{display:flex;border:1px solid #221F1C;border-radius:3px;overflow:hidden}
+  .legpick button{border:0;border-radius:0;padding:7px 8px;background:#3F3A35;color:#A49C93}
+  .legpick button[aria-pressed=true]{background:var(--blue);color:#fff}
+  .spacer{flex:1}
+  .clock{font:600 12px/1 "DejaVu Sans Mono",Consolas,monospace;color:#A49C93;
+    font-variant-numeric:tabular-nums}
+
+  #settings{position:absolute;inset:0;background:#2E2B27;z-index:5;padding:14px;
+    overflow:auto;display:none}
+  #settings.open{display:block}
+  #settings h2{font-size:13px;font-weight:600;margin-bottom:4px}
+  #settings h3{font-size:11.5px;font-weight:600;color:var(--led);margin:14px 0 3px}
+  #settings h3 span{display:block;font-weight:400;color:#8A8078;font-size:10.5px;margin-top:1px}
+  .field{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .field label{flex:1;font-size:12px;color:#CFC8C0}
+  .field input[type=number]{width:60px;background:#1B1917;color:var(--ink);
+    border:1px solid #4A443E;border-radius:3px;padding:6px 7px;
+    font:600 12px/1 monospace;text-align:right}
+  .field input[type=time]{background:#1B1917;color:var(--ink);border:1px solid #4A443E;
+    border-radius:3px;padding:5px 7px;font:600 12px/1 monospace}
+  .field input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue)}
+  .hint{font-size:11px;color:#8A8078;line-height:1.5;margin:-3px 0 11px}
+  .days{display:flex;gap:4px}
+  .days button{padding:6px 0;width:30px;text-align:center;font-size:10.5px}
+  .days button[aria-pressed=true]{background:var(--blue);border-color:#005A93}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark" aria-hidden="true">M</div>
+    <div class="where">
+      <b id="route">—</b>
+      <span id="statusline">Standby</span>
+    </div>
+    <div class="dot" id="dot" title="feed status"></div>
+  </header>
+
+  <div class="board">
+    <div class="strip">METRO</div>
+    <div class="cols"><i>LN</i><i>CAR</i><i>DEST</i><i>MIN</i></div>
+    <div id="rows"></div>
+    <div class="empty" id="empty">Press <b>Start</b> to arm the board.</div>
+
+    <div class="strip vre">VRE <span id="vreline"></span></div>
+    <div class="cols vcols"><i>TRN</i><i>DEPART</i><i>STATUS</i><i>MIN</i></div>
+    <div id="vrows"></div>
+    <div class="empty" id="vempty">—</div>
+  </div>
+
+  <div class="call">
+    <div class="lede" id="lede">LEAVE IN</div>
+    <div class="big"><em id="count">—</em><small id="countunit"></small></div>
+    <div class="sub" id="sub">Not tracking yet.</div>
+  </div>
+
+  <footer>
+    <button class="primary" id="startBtn">Start</button>
+    <div class="legpick">
+      <button id="legAuto" aria-pressed="true">Auto</button>
+      <button id="legAm" aria-pressed="false">AM</button>
+      <button id="legPm" aria-pressed="false">PM</button>
+    </div>
+    <button class="quiet" id="testBtn">Test</button>
+    <button class="quiet" id="demoBtn">Demo</button>
+    <div class="spacer"></div>
+    <span class="clock" id="clock">--:--</span>
+    <button class="quiet" id="gearBtn" aria-label="Settings">⚙</button>
+  </footer>
+
+  <div id="settings">
+    <h2>Commute settings</h2>
+    <p class="hint">Countdown = train arrival − walk − buffer. At zero you get the full alert.</p>
+
+    <h3>Morning<span>Franconia-Springfield → Downtown Largo</span></h3>
+    <div class="field"><label for="am_walk">Walk to platform (min)</label><input type="number" id="am_walk" min="0" max="60"></div>
+    <div class="field"><label for="am_vwalk">Walk to VRE platform (min)</label><input type="number" id="am_vwalk" min="0" max="60"></div>
+    <div class="field"><label for="am_buffer">Safety buffer (min)</label><input type="number" id="am_buffer" min="0" max="20"></div>
+    <div class="field"><label for="am_from">Watch from</label><input type="time" id="am_from"></div>
+    <div class="field"><label for="am_to">Stop watching at</label><input type="time" id="am_to"></div>
+
+    <h3>Evening<span>Crystal City → Franconia-Springfield</span></h3>
+    <div class="field"><label for="pm_walk">Walk to platform (min)</label><input type="number" id="pm_walk" min="0" max="60"></div>
+    <div class="field"><label for="pm_vwalk">Walk to VRE platform (min)</label><input type="number" id="pm_vwalk" min="0" max="60"></div>
+    <div class="field"><label for="pm_buffer">Safety buffer (min)</label><input type="number" id="pm_buffer" min="0" max="20"></div>
+    <div class="field"><label for="pm_from">Watch from</label><input type="time" id="pm_from"></div>
+    <div class="field"><label for="pm_to">Stop watching at</label><input type="time" id="pm_to"></div>
+
+    <h3>Both<span>Applies to morning and evening</span></h3>
+    <div class="field"><label>Active days</label><div class="days" id="days"></div></div>
+    <div class="field"><label for="alertOn">Alert me for</label>
+      <select id="alertOn" style="background:#1B1917;color:var(--ink);border:1px solid #4A443E;border-radius:3px;padding:6px 7px;font:600 11.5px/1 inherit">
+        <option value="soonest">Whichever leaves first</option>
+        <option value="metro">Metro only</option>
+        <option value="vre">VRE only</option>
+      </select></div>
+    <div class="field"><label for="snd">Chime on alert</label><input type="checkbox" id="snd"></div>
+    <div class="field"><label for="vol">Chime volume</label><input type="number" id="vol" min="0" max="100"></div>
+    <div class="field"><label for="notif">System notification</label><input type="checkbox" id="notif"></div>
+    <div class="field"><label for="awake">Keep screen awake while running</label><input type="checkbox" id="awake"></div>
+    <div class="field"><label for="showall">Show all trains, not just my line</label><input type="checkbox" id="showall"></div>
+    <div class="field"><label for="poll">Fastest refresh (sec)</label><input type="number" id="poll" min="10" max="120"></div>
+    <button class="primary" id="closeGear" style="width:100%;padding:9px;margin-top:8px">Save and close</button>
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * The two legs of the commute.
+ * Both ride the Blue Line; they just point in opposite directions.
+ * ------------------------------------------------------------------ */
+const LEGS = {
+  am: { id:"am", label:"Morning",
+        from:"J03", fromName:"Franconia-Spfld",
+        toCode:"G05", toName:"Downtown Largo",
+        line:"BL", leaveLede:"LEAVE HOME IN", goSub:"Head out now.",
+        vreFrom:"Franconia-Springfield", vreTo:"Crystal City" },
+  pm: { id:"pm", label:"Evening",
+        from:"C09", fromName:"Crystal City",
+        toCode:"J03", toName:"Franconia-Spfld",
+        line:"BL", leaveLede:"LEAVE DESK IN", goSub:"Shut it down and move.",
+        vreFrom:"Crystal City", vreTo:"Franconia-Springfield" }
+};
+
+const DEFAULTS = {
+  am:{ walk:6, buffer:2, vreWalk:6, from:"06:00", to:"09:00" },
+  pm:{ walk:8, buffer:2, vreWalk:12, from:"14:30", to:"19:00" },
+  days:[1,2,3,4,5], snd:true, vol:55, notif:true, showall:false, poll:20, keepAwake:true, alertOn:"soonest"
+};
+let CFG = JSON.parse(JSON.stringify(DEFAULTS));
+const KEY = "metro-widget-cfg";
+function loadCfg(){
+  try{
+    const r = localStorage.getItem(KEY);
+    if(!r) return;
+    const saved = JSON.parse(r);
+    CFG = Object.assign({}, DEFAULTS, saved);
+    CFG.am = Object.assign({}, DEFAULTS.am, saved.am);
+    CFG.pm = Object.assign({}, DEFAULTS.pm, saved.pm);
+  }catch(e){}
+}
+function saveCfg(){ try{ localStorage.setItem(KEY, JSON.stringify(CFG)); }catch(e){} }
+loadCfg();
+
+const API = "/api/trains";
+const API_VRE = "/api/vre";
+
+const S = {
+  running:false, demo:false, trains:[], lastFetch:0, feedOk:null,
+  errCount:0, nextTry:0, rateLimited:false, demoKey:false, errHint:"",
+  lockEpoch:null, lockMode:"metro", headsFired:false, goFired:false, goUntil:0,
+  vre:[], vreOk:null, vreLine:"", vreErr:"", vreAt:0,
+  wake:null,          // WakeLockSentinel, when the screen is being held on
+  override:null,      // null = auto, or "am" / "pm"
+  legId:null          // leg currently displayed
+};
+const $ = id => document.getElementById(id);
+const app = $("app");
+
+/* ---------- audio ---------- */
+let actx=null;
+function tone(freq,start,dur,gain){
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type="triangle"; o.frequency.value=freq;
+  g.gain.setValueAtTime(0,actx.currentTime+start);
+  g.gain.linearRampToValueAtTime(gain,actx.currentTime+start+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+start+dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(actx.currentTime+start); o.stop(actx.currentTime+start+dur+0.05);
+}
+function chime(kind){
+  if(!CFG.snd) return;
+  try{
+    if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==="suspended") actx.resume();
+    const v = Math.max(0,Math.min(100,CFG.vol))/100 * 0.5;
+    if(kind==="heads"){ tone(784,0,.35,v*.7); tone(1046,.16,.4,v*.55); }
+    else { for(let i=0;i<3;i++){ tone(1046,i*.42,.22,v); tone(784,i*.42+.13,.28,v*.85); } }
+  }catch(e){}
+}
+function notify(title,body){
+  if(!CFG.notif) return;
+  try{
+    if(!("Notification" in window)) return;
+    if(Notification.permission==="granted"){ new Notification(title,{body,tag:"metro-go",renotify:true}); }
+    else if(Notification.permission!=="denied"){ Notification.requestPermission(); }
+  }catch(e){}
+}
+
+/* ------------------------------------------------------------------ *
+ * Screen wake lock — keeps a phone or tablet from sleeping while the
+ * board is up. The browser drops the lock whenever the app is hidden,
+ * so we re-acquire it every time we come back to the foreground.
+ * ------------------------------------------------------------------ */
+async function holdScreen(){
+  if(!CFG.keepAwake || !S.running) return;
+  if(!("wakeLock" in navigator)) return;
+  if(S.wake && !S.wake.released) return;
+  try{
+    S.wake = await navigator.wakeLock.request("screen");
+    S.wake.addEventListener("release", ()=>{ S.wake = null; });
+  }catch(e){
+    // Refused on low battery, power saving, or an unsupported browser.
+    S.wake = null;
+  }
+}
+function dropScreen(){
+  try{ if(S.wake) S.wake.release(); }catch(e){}
+  S.wake = null;
+}
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible") holdScreen(); 
+});
+
+/* ------------------------------------------------------------------ *
+ * Which leg is live right now
+ * ------------------------------------------------------------------ */
+function mins(hhmm){ const [h,m]=hhmm.split(":").map(Number); return h*60+m; }
+function inWindow(now, id){
+  if(!CFG.days.includes(now.getDay())) return false;
+  const t = now.getHours()*60 + now.getMinutes();
+  return t >= mins(CFG[id].from) && t < mins(CFG[id].to);
+}
+function activeLegId(now){
+  if(S.override) return S.override;
+  if(inWindow(now,"am")) return "am";
+  if(inWindow(now,"pm")) return "pm";
+  return null;
+}
+function nextWindow(now){
+  const t = now.getHours()*60 + now.getMinutes();
+  if(t < mins(CFG.am.from)) return {id:"am", at:CFG.am.from};
+  if(t < mins(CFG.pm.from)) return {id:"pm", at:CFG.pm.from};
+  return {id:"am", at:CFG.am.from, tomorrow:true};
+}
+// The leg we're actually showing. In Demo, default to PM so there's
+// always something to look at.
+function L(){ return LEGS[S.legId || S.override || "pm"]; }
+
+function setLeg(id){
+  if(S.legId === id) return;
+  S.legId = id;
+  S.trains = []; S.vre = []; S.vreOk = null; S.vreAt = 0; S.lockEpoch = null;
+  S.headsFired = S.goFired = false; S.goUntil = 0;
+  S.lastFetch = 0; demoSeed = null;
+  app.classList.remove("heads","go");
+}
+
+/* ------------------------------------------------------------------ *
+ * Data
+ * ------------------------------------------------------------------ */
+function parseMin(v){
+  if(v==null) return null;
+  const s = String(v).trim().toUpperCase();
+  if(s==="BRD") return 0;
+  if(s==="ARR") return 0.5;
+  if(s==="---"||s===""||s==="DLY") return null;
+  const n = parseInt(s,10);
+  return isNaN(n) ? null : n;
+}
+
+async function fetchTrains(){
+  const now = Date.now();
+  const leg = L();
+  if(S.demo){ S.trains = demoTrains(now, leg); S.feedOk = true; S.lastFetch = now; S.errCount = 0; return; }
+  try{
+    const r = await fetch(API + "?station=" + leg.from, {cache:"no-store"});
+    if(r.status === 429 || r.status === 403){ S.rateLimited = true; throw new Error("rate limited"); }
+    if(r.status === 404){
+      throw new Error("404 — /api/trains isn't deployed. The worker script or wrangler config is missing from the repo.");
+    }
+    if(!r.ok) throw new Error("HTTP " + r.status + " from the proxy");
+    const j = await r.json();
+    if(j.error) throw new Error("WMATA said: " + j.error);
+    S.demoKey = !!j.usingDemoKey;
+    S.trains = (j.Trains||[])
+      .map(t=>({ line:t.Line, car:t.Car, dest:t.DestinationName||t.Destination,
+                 destCode:t.DestinationCode, group:t.Group, min:parseMin(t.Min) }))
+      .filter(t=>t.min!==null)
+      // Pin each train to a wall-clock arrival when we hear about it, so the
+      // board keeps counting down honestly if the feed goes dark.
+      .map(t=>({...t, epoch: now + t.min*60000}))
+      .sort((a,b)=>a.epoch-b.epoch);
+    S.feedOk = true; S.errCount = 0; S.rateLimited = false;
+  }catch(e){
+    S.feedOk = false; S.errCount++;
+    S.errHint = (location.protocol === "file:")
+      ? "Running from a local file, so there's no /api/trains to call. Deploy it, or use Demo."
+      : e.message;
+    S.nextTry = now + Math.min(CFG.poll*1000 * Math.pow(2, S.errCount), 300000);
+  }
+  S.lastFetch = now;
+}
+
+// VRE runs a handful of trains an hour at peak, so a slower poll is plenty.
+async function fetchVre(){
+  const leg = L();
+  if(S.demo){
+    const base = Date.now();
+    S.vre = [0,1].map(i=>({
+      train:String(305+i*2), line:"Fredericksburg Line",
+      scheduled: base + (14+i*38)*60000,
+      predicted: base + (14+i*38+ i*6)*60000,
+      delaySec: i*360, live:true
+    }));
+    S.vreLine="Fredericksburg Line"; S.vreOk=true; S.vreAt=Date.now(); return;
+  }
+  try{
+    const r = await fetch(API_VRE + "?from=" + encodeURIComponent(leg.vreFrom) +
+                          "&to=" + encodeURIComponent(leg.vreTo) + "&limit=3", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if(j.error) throw new Error(j.error);
+    S.vre = j.departures || [];
+    S.vreLine = S.vre.length ? S.vre[0].line : "";
+    S.vreOk = true; S.vreErr = "";
+  }catch(e){
+    S.vreOk = false; S.vreErr = e.message; S.vre = [];
+  }
+  S.vreAt = Date.now();
+}
+
+// Earliest VRE train you could still make, and when you'd have to leave.
+function vreTarget(){
+  const leg = L(), lead = (CFG[leg.id].vreWalk + CFG[leg.id].buffer)*60000;
+  const now = Date.now();
+  for(const d of S.vre){ if(d.predicted - now >= lead) return d; }
+  return S.vre.find(d => d.predicted > now) || null;
+}
+
+function relevant(){
+  const leg = L(), cut = Date.now() - 90000;
+  const live = S.trains.filter(t=>t.epoch > cut);
+  if(CFG.showall) return live;
+  const f = live.filter(t=>t.line===leg.line && t.destCode===leg.toCode);
+  return f.length ? f : live.filter(t=>t.line===leg.line);
+}
+
+let demoSeed=null;
+function demoTrains(now, leg){
+  if(!demoSeed || demoSeed.filter(t=>t-now>0).length < 2){
+    const keep = (demoSeed||[]).filter(t=>t-now>0);
+    demoSeed = keep.slice();
+    let t = keep.length ? keep[keep.length-1] : now + (2+Math.random()*3)*60000;
+    while(demoSeed.length<5){ demoSeed.push(t); t += (4+Math.random()*4)*60000; }
+    demoSeed.sort((a,b)=>a-b);
+  }
+  return demoSeed.filter(t=>t-now>-30000).map(t=>({
+    line:leg.line, car:"8", dest:leg.toName, destCode:leg.toCode, group:"1",
+    min:(t-now)/60000, epoch:t
+  })).sort((a,b)=>a.epoch-b.epoch);
+}
+
+/* ---------- target lock ---------- */
+function pickTarget(){
+  const now = Date.now();
+  const lead = (CFG[L().id].walk + CFG[L().id].buffer) * 60000;
+  const cands = relevant();
+  if(!cands.length){ S.lockEpoch=null; return null; }
+  if(S.lockEpoch){
+    let best=null, bd=Infinity;
+    for(const c of cands){ const d=Math.abs(c.epoch-S.lockEpoch); if(d<bd){bd=d;best=c;} }
+    if(best && bd < 150000 && best.epoch - now > -60000){ S.lockEpoch = best.epoch; return best; }
+  }
+  const fresh = cands.find(c => c.epoch - now >= lead) || cands.find(c=>c.epoch-now>0);
+  if(!fresh){ S.lockEpoch=null; return null; }
+  S.lockEpoch = fresh.epoch;
+  S.headsFired=false; S.goFired=false;
+  return fresh;
+}
+
+/* ---------- render ---------- */
+function fmtClock(d){ return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function pad2(n){ return (n<10?"0":"")+n; }
+function fmtShort(d){
+  return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})
+          .replace(/\s*AM$/i,"a").replace(/\s*PM$/i,"p");
+}
+function hhmmLabel(hhmm){
+  const [h,m]=hhmm.split(":").map(Number);
+  const d=new Date(); d.setHours(h,m,0,0); return fmtClock(d);
+}
+
+function render(){
+  const now = new Date();
+  $("clock").textContent = fmtClock(now);
+  $("dot").className = "dot" + (S.running ? (S.feedOk===false ? " err" : " on") : "");
+
+  const wanted = S.demo ? (S.override || S.legId || "pm") : activeLegId(now);
+  if(wanted) setLeg(wanted);
+  const leg = L();
+  $("route").innerHTML = leg.fromName + ' <i>→</i> ' + leg.toName;
+  $("lede").textContent = leg.leaveLede;
+
+  if(!S.running){
+    $("statusline").textContent = "Standby";
+    return;
+  }
+
+  if(!S.demo && !wanted){
+    const nx = nextWindow(now);
+    $("statusline").textContent = "Armed · next window " + hhmmLabel(nx.at);
+    $("rows").innerHTML=""; $("empty").style.display="";
+    $("empty").innerHTML = "Quiet until <b>" + hhmmLabel(nx.at) + "</b>" +
+      (nx.tomorrow ? " tomorrow" : "") + ".<br>" + LEGS[nx.id].label.toLowerCase() +
+      " run: " + LEGS[nx.id].fromName + " to " + LEGS[nx.id].toName + ".";
+    $("count").textContent="—"; $("countunit").textContent="";
+    $("sub").textContent="Outside both watch windows.";
+    app.classList.remove("heads","go");
+    return;
+  }
+
+  const list = relevant().slice(0,4);
+  const target = pickTarget();
+  const walk = CFG[leg.id].walk, buf = CFG[leg.id].buffer;
+
+  if(!list.length){
+    $("rows").innerHTML=""; $("empty").style.display="";
+    $("empty").innerHTML = S.feedOk===false
+      ? (S.rateLimited
+          ? "Shared demo key is rate limited right now. Retrying shortly."
+          : "No feed. " + (S.errHint || "Check the network, then press Start again."))
+      : "No " + leg.line + " trains to " + leg.toName + " reported right now.";
+  } else {
+    $("empty").style.display="none";
+    $("rows").innerHTML = list.map(t=>{
+      const out = (t.epoch - Date.now())/60000;
+      const leaveIn = out - walk - buf;
+      const isT = target && Math.abs(t.epoch - S.lockEpoch) < 30000;
+      const mm = out < 1 ? (out < 0.3 ? "BRD" : "ARR") : String(Math.floor(out));
+      return '<div class="row ' + (leaveIn<0?"past":"") + ' ' + (isT?"target":"") + '">' +
+        '<span class="ln">' + t.line + '</span><span>' + (t.car||"—") + '</span>' +
+        '<span class="dest">' + t.dest + '</span><span class="min">' + mm + '</span></div>';
+    }).join("");
+  }
+
+  renderVre();
+
+  const ageSec = Math.round((Date.now()-S.lastFetch)/1000);
+  let feedNote;
+  if(S.feedOk===false) feedNote = S.rateLimited ? "rate limited, retrying" : "feed down, retrying";
+  else if(ageSec > 120) feedNote = "last data " + Math.round(ageSec/60) + " min old";
+  else feedNote = "updated " + fmtClock(new Date(S.lastFetch));
+  const mode = S.demo ? "Demo" : (S.override ? leg.label + " (held)" : (S.demoKey ? "Demo key" : "Live"));
+  $("statusline").textContent = mode + " · " + feedNote;
+
+  // Two ways home. Work out when you'd have to leave for each, then let
+  // the alertOn setting decide which one drives the countdown.
+  const opts = [];
+  if(target) opts.push({
+    mode:"metro", label:"Metro",
+    depart:S.lockEpoch,
+    leaveAt:S.lockEpoch - (walk+buf)*60000,
+    detail:walk + " min walk + " + buf + " min buffer"
+  });
+  const vt = vreTarget();
+  if(vt) opts.push({
+    mode:"vre", label:"VRE " + vt.train,
+    depart:vt.predicted,
+    leaveAt:vt.predicted - (CFG[leg.id].vreWalk+buf)*60000,
+    detail:CFG[leg.id].vreWalk + " min walk" +
+      (vt.live && Math.abs(vt.delaySec||0) >= 60
+        ? " · running " + Math.abs(Math.round(vt.delaySec/60)) + " min " + (vt.delaySec>0?"late":"early")
+        : "")
+  });
+
+  let pick = null;
+  if(CFG.alertOn === "metro") pick = opts.find(o=>o.mode==="metro");
+  else if(CFG.alertOn === "vre") pick = opts.find(o=>o.mode==="vre");
+  else pick = opts.sort((a,b)=>a.leaveAt-b.leaveAt)[0];
+
+  if(!pick){
+    $("count").textContent="—"; $("countunit").textContent="";
+    $("sub").textContent="Nothing catchable on either board.";
+    app.classList.remove("heads","go");
+    return;
+  }
+
+  // Switching between Metro and VRE is a new decision — re-arm the alerts.
+  if(S.lockMode !== pick.mode){ S.lockMode = pick.mode; S.headsFired = S.goFired = false; }
+
+  const secs = Math.floor((pick.leaveAt - Date.now())/1000);
+  const boardTime = new Date(pick.depart);
+
+  if(Date.now() < S.goUntil || secs <= 0){
+    app.classList.remove("heads"); app.classList.add("go");
+    $("lede").textContent = "GO NOW · " + pick.label.toUpperCase();
+    $("count").textContent = "WALK"; $("countunit").textContent = "";
+    $("sub").textContent = pick.label + " at " + fmtClock(boardTime) + " · " + pick.detail + ". " + leg.goSub;
+    if(!S.goFired){
+      S.goFired = true; S.goUntil = Date.now() + 120000;
+      chime("go");
+      notify("Leave now — " + pick.label + " at " + fmtClock(boardTime),
+             pick.detail + " from " + (pick.mode==="vre" ? leg.vreFrom : leg.fromName) + ".");
+    }
+  } else {
+    app.classList.remove("go");
+    $("lede").textContent = leg.leaveLede + " · " + pick.label.toUpperCase();
+    $("count").textContent = Math.floor(secs/60) + ":" + pad2(secs%60);
+    $("countunit").textContent = "min";
+    $("sub").textContent = "For the " + fmtClock(boardTime) + " " + pick.label + " · " + pick.detail;
+    if(secs <= 120){
+      app.classList.add("heads");
+      if(!S.headsFired){ S.headsFired=true; chime("heads");
+        notify("Two minutes", "Wrap up — " + pick.label + " at " + fmtClock(boardTime) + "."); }
+    } else app.classList.remove("heads");
+  }
+}
+
+function renderVre(){
+  const leg = L(), now = Date.now();
+  $("vreline").textContent = S.vreLine ? "· " + S.vreLine : "";
+  const tgt = vreTarget();
+  if(!S.vre.length){
+    $("vrows").innerHTML = "";
+    $("vempty").style.display = "";
+    $("vempty").innerHTML = S.vreOk === false
+      ? "VRE feed unavailable. " + (S.vreErr || "")
+      : (S.vreOk === null ? "Loading VRE…" : "No more VRE trains " + leg.vreFrom + " to " + leg.vreTo + " today.");
+    return;
+  }
+  $("vempty").style.display = "none";
+  $("vrows").innerHTML = S.vre.map(d=>{
+    const mins = Math.round((d.predicted - now)/60000);
+    const late = Math.round((d.delaySec||0)/60);
+    const status = !d.live ? '<span class="noline">scheduled</span>'
+      : late > 0 ? '<span class="late">' + late + ' min late</span>'
+      : late < 0 ? '<span class="late">' + (-late) + ' min early</span>'
+      : '<span class="ontime">on time</span>';
+    const isT = tgt && tgt.train === d.train && tgt.scheduled === d.scheduled;
+    const leaveIn = mins - CFG[leg.id].vreWalk - CFG[leg.id].buffer;
+    return '<div class="vrow ' + (leaveIn<0?"past":"") + ' ' + (isT?"target":"") + '">' +
+      '<span class="trn">' + d.train + '</span>' +
+      '<span>' + fmtShort(new Date(d.predicted)) + '</span>' +
+      '<span class="vstat">' + status + '</span>' +
+      '<span class="min">' + (mins<1?"NOW":mins) + '</span></div>';
+  }).join("");
+}
+
+/* ---------- loops ---------- */
+function pollInterval(){
+  if(S.errCount > 0) return Math.max(0, S.nextTry - S.lastFetch);
+  const base = CFG.poll*1000;
+  if(!S.lockEpoch) return base*3;
+  const leg = L();
+  const toLeave = S.lockEpoch - Date.now() - (CFG[leg.id].walk+CFG[leg.id].buffer)*60000;
+  if(toLeave < 5*60000)  return base;
+  if(toLeave < 15*60000) return base*2;
+  return base*3;
+}
+setInterval(render, 1000);
+setInterval(async ()=>{
+  if(!S.running) return;
+  if(!S.demo && !activeLegId(new Date())) return;
+  if(Date.now() - S.vreAt > (S.demo ? 60000 : 45000)) fetchVre();
+  if(Date.now() - S.lastFetch < pollInterval() - 500) return;
+  await fetchTrains();
+}, 1000);
+
+/* ---------- controls ---------- */
+function setRunning(on){
+  S.running = on;
+  $("startBtn").textContent = on ? "Stop" : "Start";
+  $("startBtn").classList.toggle("primary", !on);
+  if(on){
+    S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
+    try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); actx.resume(); }catch(e){}
+    if(CFG.notif && "Notification" in window && Notification.permission==="default") Notification.requestPermission();
+    holdScreen();
+    fetchTrains(); fetchVre();
+  } else { dropScreen(); app.classList.remove("heads","go"); }
+  render();
+}
+$("startBtn").onclick = ()=> setRunning(!S.running);
+
+function paintLegPick(){
+  $("legAuto").setAttribute("aria-pressed", !S.override);
+  $("legAm").setAttribute("aria-pressed", S.override==="am");
+  $("legPm").setAttribute("aria-pressed", S.override==="pm");
+}
+function chooseLeg(v){ S.override = v; paintLegPick(); if(v) setLeg(v); S.lastFetch=0; render(); }
+$("legAuto").onclick = ()=> chooseLeg(null);
+$("legAm").onclick   = ()=> chooseLeg("am");
+$("legPm").onclick   = ()=> chooseLeg("pm");
+
+$("demoBtn").onclick = ()=>{
+  S.demo = !S.demo; demoSeed=null; S.lockEpoch=null;
+  S.headsFired=S.goFired=false; S.goUntil=0; S.lastFetch=0;
+  $("demoBtn").style.color = S.demo ? "#FFB000" : "";
+  if(S.demo && !S.running) setRunning(true); else render();
+};
+$("testBtn").onclick = ()=>{
+  chime("go");
+  notify("Leave now — test","This is what the real alert looks like.");
+  app.classList.add("go");
+  setTimeout(()=>{ if(!S.goFired) app.classList.remove("go"); }, 4000);
+};
+
+const dayNames=["Su","Mo","Tu","We","Th","Fr","Sa"];
+dayNames.forEach((d,i)=>{
+  const b=document.createElement("button");
+  b.textContent=d; b.setAttribute("aria-pressed", CFG.days.includes(i));
+  b.onclick=()=>{ const on=b.getAttribute("aria-pressed")==="true";
+    b.setAttribute("aria-pressed",!on);
+    CFG.days = on ? CFG.days.filter(x=>x!==i) : CFG.days.concat(i).sort(); };
+  $("days").appendChild(b);
+});
+function fillGear(){
+  for(const id of ["am","pm"]){
+    $(id+"_walk").value=CFG[id].walk; $(id+"_buffer").value=CFG[id].buffer;
+    $(id+"_from").value=CFG[id].from; $(id+"_to").value=CFG[id].to;
+    $(id+"_vwalk").value=CFG[id].vreWalk;
+  }
+  $("snd").checked=CFG.snd; $("vol").value=CFG.vol; $("notif").checked=CFG.notif;
+  $("showall").checked=CFG.showall; $("poll").value=CFG.poll;
+  $("awake").checked=CFG.keepAwake; $("alertOn").value=CFG.alertOn;
+  $("awake").disabled = !("wakeLock" in navigator);
+}
+$("gearBtn").onclick=()=>{ fillGear(); $("settings").classList.add("open"); };
+$("closeGear").onclick=()=>{
+  for(const id of ["am","pm"]){
+    CFG[id].walk=+$(id+"_walk").value||0; CFG[id].buffer=+$(id+"_buffer").value||0;
+    CFG[id].from=$(id+"_from").value||DEFAULTS[id].from;
+    CFG[id].to=$(id+"_to").value||DEFAULTS[id].to;
+    CFG[id].vreWalk=+$(id+"_vwalk").value||0;
+  }
+  CFG.snd=$("snd").checked; CFG.vol=+$("vol").value; CFG.notif=$("notif").checked;
+  CFG.showall=$("showall").checked; CFG.poll=Math.max(10,+$("poll").value||20);
+  CFG.keepAwake=$("awake").checked; CFG.alertOn=$("alertOn").value;
+  S.lockMode=null;
+  if(CFG.keepAwake) holdScreen(); else dropScreen();
+  saveCfg(); $("settings").classList.remove("open");
+  S.lockEpoch=null; S.headsFired=S.goFired=false; render();
+};
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="Escape"){ app.classList.remove("go","heads"); S.goUntil=0; }
+});
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+paintLegPick(); render();
+</script>
+</body>
+</html>
