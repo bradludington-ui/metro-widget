@@ -1,6 +1,5 @@
 # Server-side code and config — bundled into the Worker, never served as static files.
 worker.js
-traffic.js
 schedule.js
 wrangler.jsonc
 .assetsignore

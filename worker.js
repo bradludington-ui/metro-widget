@@ -1,7 +1,6 @@
 // Workers entry point. Serves the /api/ routes itself and hands everything
 // else to the static assets (index.html, sw.js, icons).
 
-import { hereTraffic, hereDiagnose } from "./traffic.js";
 import { scheduledDepartures, scheduleDiagnose } from "./schedule.js";
 
 // WMATA's old shared demo key no longer works, so without a WMATA_KEY
@@ -24,12 +23,6 @@ export default {
       if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
       try { return json(await scheduleDiagnose(env, url.searchParams.get("station") || "C09"), 200); }
       catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200); }
-    }
-    if (url.pathname === "/api/traffic") {
-      return traffic(url, env);
-    }
-    if (url.pathname === "/api/traffic/debug") {
-      return trafficDebug(url, env);
     }
     // Not an API route — let the static assets handle it.
     return env.ASSETS.fetch(request);
@@ -83,43 +76,6 @@ async function schedule(url, env) {
   } catch (e) {
     return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200);
   }
-}
-
-/* ------------------------------------------------------------------ *
- * Traffic — HERE.
- * Live traffic is commercial data, so this needs its own key.
- * Set HERE_KEY in the Worker's Variables and Secrets.
- * ------------------------------------------------------------------ */
-const LL = /^-?\d+\.?\d*,-?\d+\.?\d*$/;
-const DEFAULT_FROM = "38.7057,-77.2247";   // I-95 Exit 163, Lorton
-const DEFAULT_TO   = "38.8719,-77.0563";   // The Pentagon
-
-async function traffic(url, env) {
-  if (!env.HERE_KEY) {
-    return json({ error: "no_key", wanted: "HERE_KEY",
-      message: "Set HERE_KEY in the Worker's Variables and Secrets. " +
-               "Free key at developer.here.com." }, 200);
-  }
-  const from = url.searchParams.get("from") || DEFAULT_FROM;
-  const to   = url.searchParams.get("to")   || DEFAULT_TO;
-  if (!LL.test(from) || !LL.test(to)) return json({ error: "from and to must be lat,lon" }, 400);
-
-  try {
-    const data = await hereTraffic(env.HERE_KEY, from, to);
-    return json({ generated: Date.now(), from, to, ...data }, 200);
-  } catch (e) {
-    // Pass HERE's own error text through — its 400s name the bad parameter.
-    return json({ error: String(e && e.message || e), attempts: e && e.attempts }, 200);
-  }
-}
-
-// Every request tier, with status and HERE's raw response.
-async function trafficDebug(url, env) {
-  if (!env.HERE_KEY) return json({ error: "HERE_KEY is not set" }, 200);
-  const from = url.searchParams.get("from") || DEFAULT_FROM;
-  const to   = url.searchParams.get("to")   || DEFAULT_TO;
-  try { return json(await hereDiagnose(env.HERE_KEY, from, to), 200); }
-  catch (e) { return json({ error: String(e && e.message || e) }, 200); }
 }
 
 function json(body, status) {
