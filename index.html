@@ -143,7 +143,7 @@
     <div class="mark" aria-hidden="true">M</div>
     <div class="where">
       <b id="route">—</b>
-      <span id="statusline">Standby</span>
+      <span id="statusline">Starting…</span>
     </div>
     <div class="dot" id="dot" title="feed status"></div>
   </header>
@@ -152,7 +152,7 @@
     <div class="strip">METRO <em id="reach"></em></div>
     <div class="cols"><i>LN</i><i>CAR</i><i>DEST</i><i>MIN</i></div>
     <div id="rows"></div>
-    <div class="empty" id="empty">Press <b>Start</b> to arm the board.</div>
+    <div class="empty" id="empty">Loading trains…</div>
   </div>
 
   <div class="call">
@@ -162,7 +162,7 @@
   </div>
 
   <footer>
-    <button class="primary" id="startBtn">Start</button>
+    <button class="primary" id="soundBtn" hidden title="Browsers keep sound off until you tap the page. Tap to turn alert sound on." aria-label="Enable sound">🔇 Sound</button>
     <div class="legpick">
       <button id="legAuto" aria-pressed="true">Auto</button>
       <button id="legAm" aria-pressed="false">AM</button>
@@ -525,7 +525,7 @@ function render(){
     $("empty").innerHTML = S.feedOk===false
       ? (S.rateLimited
           ? "Shared demo key is rate limited right now. Retrying shortly."
-          : "No feed. " + (S.errHint || "Check the network, then press Start again."))
+          : "No feed. " + (S.errHint || "Check the network. Retrying on its own."))
       : "No " + leg.line + " trains to " + leg.toName + " reported right now.";
   } else {
     $("empty").style.display="none";
@@ -619,20 +619,36 @@ setInterval(async ()=>{
 }, 1000);
 
 /* ---------- controls ---------- */
-function setRunning(on){
-  S.running = on;
-  $("startBtn").textContent = on ? "Stop" : "Start";
-  $("startBtn").classList.toggle("primary", !on);
-  if(on){
-    S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
-    try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); actx.resume(); }catch(e){}
-    if(CFG.notif && "Notification" in window && Notification.permission==="default") Notification.requestPermission();
-    holdScreen();
-    fetchTrains(); fetchSchedule();
-  } else { dropScreen(); app.classList.remove("heads","go"); }
+// The board runs as soon as the page loads. Browsers won't play sound or
+// ask for notification permission until the user has interacted with the
+// page, so the first tap or keypress anywhere finishes that part. Until
+// then an "Enable sound" button shows that alerts will be silent.
+function startBoard(){
+  S.running = true;
+  S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
+  try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  holdScreen();
+  fetchTrains(); fetchSchedule();
+  unlockAudio(false);
   render();
 }
-$("startBtn").onclick = ()=> setRunning(!S.running);
+function unlockAudio(fromGesture){
+  try{ if(actx && actx.state==="suspended") actx.resume().then(paintSound, paintSound); }catch(e){}
+  if(fromGesture){
+    if(CFG.notif && "Notification" in window && Notification.permission==="default") Notification.requestPermission();
+    holdScreen();
+    document.removeEventListener("pointerdown", onFirstGesture, true);
+    document.removeEventListener("keydown", onFirstGesture, true);
+  }
+  paintSound();
+}
+function paintSound(){
+  $("soundBtn").hidden = !CFG.snd || !actx || actx.state==="running";
+}
+function onFirstGesture(){ unlockAudio(true); }
+document.addEventListener("pointerdown", onFirstGesture, true);
+document.addEventListener("keydown", onFirstGesture, true);
+$("soundBtn").onclick = ()=>{ unlockAudio(true); chime("heads"); };
 
 function paintLegPick(){
   $("legAuto").setAttribute("aria-pressed", !S.override);
@@ -646,9 +662,9 @@ $("legPm").onclick   = ()=> chooseLeg("pm");
 
 $("demoBtn").onclick = ()=>{
   S.demo = !S.demo; demoSeed=null; S.lockEpoch=null;
-  S.headsFired=S.goFired=false; S.goUntil=0; S.lastFetch=0;
+  S.headsFired=S.goFired=false; S.goUntil=0; S.lastFetch=0; S.errCount=0;
   $("demoBtn").style.color = S.demo ? "#FFB000" : "";
-  if(S.demo && !S.running) setRunning(true); else render();
+  render(); fetchTrains().then(render);
 };
 $("testBtn").onclick = ()=>{
   chime("go");
@@ -690,6 +706,7 @@ $("closeGear").onclick=()=>{
   CFG.lookAhead=Math.max(10,+$("look").value||60);
   CFG.textSize=+$("tsize").value||1; applyScale();
   if(CFG.keepAwake) holdScreen(); else dropScreen();
+  paintSound();
   saveCfg(); $("settings").classList.remove("open");
   S.lockEpoch=null; S.headsFired=S.goFired=false; render();
 };
@@ -699,7 +716,7 @@ document.addEventListener("keydown", e=>{
 });
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 function applyScale(){ app.style.setProperty("--tscale", String(CFG.textSize||1)); }
-applyScale(); paintLegPick(); render();
+applyScale(); paintLegPick(); startBoard();
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
-  "name": "Next Train — Crystal City",
+  "name": "Next Train",
   "short_name": "Next Train",
-  "description": "Blue Line departures from Crystal City to Franconia-Springfield, with a leave-your-desk countdown.",
+  "description": "Blue Line departures for the morning and evening commute, with a time-to-leave countdown.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

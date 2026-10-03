@@ -141,8 +141,12 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
 
 ## 4. Using it
 
-- **Start** arms the widget for the day. Do this once each morning. The click also unlocks
-  audio — browsers won't play sound without a user gesture, so this button is doing real work.
+- It starts on its own. Open the page (or launch the installed app) and it begins watching
+  trains — there's no Start button.
+- **Tap once to turn sound on.** Browsers won't play sound or ask for notification
+  permission until you've interacted with the page. Until you do, a **🔇 Sound** button sits
+  in the footer as a reminder; the first tap or keypress anywhere enables the chime, asks
+  for notification permission and hides the button. The red screen flash works without it.
 - Nothing appears on the board until **2:30 PM**, Monday–Friday. Both are adjustable in ⚙.
 - **Demo** fakes a train feed so you can watch the whole alert sequence without waiting until
   the afternoon. Turn it off before you rely on it.
