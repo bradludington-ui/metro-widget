@@ -48,12 +48,27 @@ async function trains(url, env) {
       `https://api.wmata.com/StationPrediction.svc/json/GetPrediction/${station}`,
       { headers: { api_key: key }, cf: { cacheTtl: 15, cacheEverything: true } }
     );
-    if (!r.ok) return json({ error: "wmata " + r.status, usingDemo }, 502);
+    if (!r.ok) {
+      // Pass WMATA's own explanation through. Without it the board can only
+      // say "502", which doesn't tell a bad key from an outage.
+      const detail = (await r.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
+      let why;
+      if (r.status === 401 || r.status === 403) {
+        why = usingDemo
+          ? "WMATA rejected the shared demo key (" + r.status + "). It has probably been rotated or used up — add your own key as the WMATA_KEY secret."
+          : "WMATA rejected your WMATA_KEY (" + r.status + "). Check the secret in Cloudflare matches your primary key.";
+      } else if (r.status === 429) {
+        why = "WMATA rate limit (429)" + (usingDemo ? " — the shared demo key is busy." : ".");
+      } else {
+        why = "WMATA returned " + r.status + (r.status >= 500 ? " — their API is having trouble." : ".");
+      }
+      return json({ error: why, wmataStatus: r.status, detail, usingDemo }, r.status === 429 ? 429 : 502);
+    }
     const data = await r.json();
     data.usingDemoKey = usingDemo;
     return json(data, 200);
   } catch (e) {
-    return json({ error: String(e), usingDemo }, 502);
+    return json({ error: "Couldn't reach WMATA: " + String(e && e.message || e), usingDemo }, 502);
   }
 }
 

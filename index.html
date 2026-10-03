@@ -376,7 +376,13 @@ async function fetchTrains(){
     if(r.status === 404){
       throw new Error("404 — /api/trains isn't deployed. The worker script or wrangler config is missing from the repo.");
     }
-    if(!r.ok) throw new Error("HTTP " + r.status + " from the proxy");
+    if(!r.ok){
+      // The Worker explains WMATA failures in its JSON body; show that
+      // rather than a bare status code.
+      let why = "";
+      try{ why = (await r.json()).error || ""; }catch(e){}
+      throw new Error(why || ("HTTP " + r.status + " from the proxy"));
+    }
     const j = await r.json();
     if(j.error) throw new Error("WMATA said: " + j.error);
     S.demoKey = !!j.usingDemoKey;
