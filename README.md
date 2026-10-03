@@ -69,6 +69,11 @@ The widget is built to survive all three: it polls slowly when your train is far
 backs off exponentially on errors, and keeps counting down from the last known arrival
 times rather than going blank. But a rotated key at 4:15 PM still means no board.
 
+The demo key also usually can't download WMATA's timetable, so on it the board only shows
+live predictions — about 15–20 minutes out rather than your full look-ahead window. The
+METRO strip says "own WMATA key needed for timetable" when that's what's happening. See
+[How far ahead it shows](#how-far-ahead-it-shows).
+
 If you get your own key later it takes two minutes and none of this applies:
 
 1. Sign up at <https://developer.wmata.com/>
