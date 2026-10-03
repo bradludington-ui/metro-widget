@@ -306,7 +306,13 @@ function dropScreen(){
   S.wake = null;
 }
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible") holdScreen(); 
+  if(document.visibilityState !== "visible") return;
+  holdScreen();
+  // Catch up on anything missed while polling was paused.
+  if(S.running && Date.now() - S.lastFetch > 15000 && Date.now() >= S.nextTry){
+    if(Date.now() - S.schedAt > 600000) fetchSchedule();
+    fetchTrains().then(render);
+  }
 });
 
 /* ------------------------------------------------------------------ *
@@ -553,19 +559,35 @@ function render(){
 }
 
 /* ---------- loops ---------- */
+// Milliseconds until you need to leave for the train we're locked onto,
+// or null when nothing is locked.
+function msToLeave(){
+  if(!S.lockEpoch) return null;
+  const leg = L();
+  return S.lockEpoch - Date.now() - (CFG[leg.id].walk+CFG[leg.id].buffer)*60000;
+}
+// While the board can't be seen (minimized, another tab, phone locked) stop
+// calling WMATA — unless leaving is under 15 minutes away, so the heads-up
+// and Go alerts still fire on fresh data. Windows can report a board that's
+// merely covered by other windows as hidden, which is why the alerts can't
+// simply stop. Coming back into view refreshes straight away.
+function pausedWhileHidden(){
+  if(!document.hidden) return false;
+  const t = msToLeave();
+  return t === null || t > 15*60000;
+}
 function pollInterval(){
   if(S.errCount > 0) return Math.max(0, S.nextTry - S.lastFetch);
   const base = CFG.poll*1000;
-  if(!S.lockEpoch) return base*3;
-  const leg = L();
-  const toLeave = S.lockEpoch - Date.now() - (CFG[leg.id].walk+CFG[leg.id].buffer)*60000;
+  const toLeave = msToLeave();
+  if(toLeave === null) return base*3;
   if(toLeave < 5*60000)  return base;
   if(toLeave < 15*60000) return base*2;
   return base*3;
 }
 setInterval(render, 1000);
 setInterval(async ()=>{
-  if(!S.running) return;
+  if(!S.running || pausedWhileHidden()) return;
   if(Date.now() - S.schedAt > 600000) fetchSchedule();
   if(Date.now() - S.lastFetch < pollInterval() - 500) return;
   await fetchTrains();
