@@ -4,7 +4,10 @@
 import { hereTraffic, hereDiagnose } from "./traffic.js";
 import { scheduledDepartures, scheduleDiagnose } from "./schedule.js";
 
-const DEMO_KEY = "e13626d03d8e4c03ac07f95541b3091b";
+// WMATA's old shared demo key no longer works, so without a WMATA_KEY
+// secret there is nothing to call with. Say so plainly.
+const NO_KEY = "No WMATA key set. Add your key as the WMATA_KEY secret in " +
+  "Cloudflare (Workers & Pages → metro-widget → Settings → Variables and Secrets).";
 const ALLOWED = new Set(["C09", "J03", "G05", "C08", "C13", "C07"]);
 
 export default {
@@ -18,9 +21,9 @@ export default {
       return schedule(url, env);
     }
     if (url.pathname === "/api/schedule/debug") {
-      const key = env.WMATA_KEY || DEMO_KEY;
-      try { return json(await scheduleDiagnose(key, url.searchParams.get("station") || "C09"), 200); }
-      catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey, usingDemoKey: !env.WMATA_KEY }, 200); }
+      if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
+      try { return json(await scheduleDiagnose(env, url.searchParams.get("station") || "C09"), 200); }
+      catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200); }
     }
     if (url.pathname === "/api/traffic") {
       return traffic(url, env);
@@ -37,8 +40,8 @@ async function trains(url, env) {
   const station = (url.searchParams.get("station") || "C09").toUpperCase();
   if (!ALLOWED.has(station)) return json({ error: "station not allowed" }, 400);
 
-  const key = env.WMATA_KEY || DEMO_KEY;
-  const usingDemo = !env.WMATA_KEY;
+  if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 503);
+  const key = env.WMATA_KEY;
 
   try {
     const r = await fetch(
@@ -51,21 +54,17 @@ async function trains(url, env) {
       const detail = (await r.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
       let why;
       if (r.status === 401 || r.status === 403) {
-        why = usingDemo
-          ? "WMATA rejected the shared demo key (" + r.status + "). It has probably been rotated or used up — add your own key as the WMATA_KEY secret."
-          : "WMATA rejected your WMATA_KEY (" + r.status + "). Check the secret in Cloudflare matches your primary key.";
+        why = "WMATA rejected your WMATA_KEY (" + r.status + "). Check the secret in Cloudflare matches your primary key.";
       } else if (r.status === 429) {
-        why = "WMATA rate limit (429)" + (usingDemo ? " — the shared demo key is busy." : ".");
+        why = "WMATA rate limit (429).";
       } else {
         why = "WMATA returned " + r.status + (r.status >= 500 ? " — their API is having trouble." : ".");
       }
-      return json({ error: why, wmataStatus: r.status, detail, usingDemo }, r.status === 429 ? 429 : 502);
+      return json({ error: why, wmataStatus: r.status, detail }, r.status === 429 ? 429 : 502);
     }
-    const data = await r.json();
-    data.usingDemoKey = usingDemo;
-    return json(data, 200);
+    return json(await r.json(), 200);
   } catch (e) {
-    return json({ error: "Couldn't reach WMATA: " + String(e && e.message || e), usingDemo }, 502);
+    return json({ error: "Couldn't reach WMATA: " + String(e && e.message || e) }, 502);
   }
 }
 
@@ -77,13 +76,12 @@ async function schedule(url, env) {
   const line = url.searchParams.get("line") || "";
   const headsign = url.searchParams.get("headsign") || "";
   const horizonMin = Math.min(180, Math.max(10, +url.searchParams.get("horizon") || 90));
-  const key = env.WMATA_KEY || DEMO_KEY;
+  if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
 
   try {
-    const r = await scheduledDepartures({ key, station, line, headsign, horizonMin });
-    return json({ usingDemoKey: !env.WMATA_KEY, ...r }, 200);
+    return json(await scheduledDepartures({ env, station, line, headsign, horizonMin }), 200);
   } catch (e) {
-    return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey, usingDemoKey: !env.WMATA_KEY }, 200);
+    return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200);
   }
 }
 

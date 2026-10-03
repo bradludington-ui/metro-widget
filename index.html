@@ -245,8 +245,8 @@ const API_SCHED = "/api/schedule";
 
 const S = {
   running:false, demo:false, trains:[], lastFetch:0, feedOk:null,
-  errCount:0, nextTry:0, rateLimited:false, demoKey:false, errHint:"",
-  sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedOnDemo:true,
+  errCount:0, nextTry:0, rateLimited:false, errHint:"",
+  sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedNoKey:false,
   lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
   wake:null,          // WakeLockSentinel, when the screen is being held on
   override:null,      // "am" / "pm" after a tap, until the next noon or midnight
@@ -368,7 +368,6 @@ async function fetchTrains(){
     }
     const j = await r.json();
     if(j.error) throw new Error("WMATA said: " + j.error);
-    S.demoKey = !!j.usingDemoKey;
     S.trains = (j.Trains||[])
       .map(t=>({ line:t.Line, car:t.Car, dest:t.DestinationName||t.Destination,
                  destCode:t.DestinationCode, group:t.Group, min:parseMin(t.Min) }))
@@ -399,8 +398,8 @@ async function fetchSchedule(){
       "&headsign=" + encodeURIComponent(leg.headsign) + "&horizon=" + CFG.lookAhead, {cache:"no-store"});
     const j = await r.json();
     if(j.error){ S.schedErr = j.error; S.schedNeedsKey = !!j.needsOwnKey;
-                 S.schedOnDemo = j.usingDemoKey !== false; S.sched = []; }
-    else { S.sched = j.departures || []; S.schedErr = ""; S.schedNeedsKey = false; }
+                 S.schedNoKey = !!j.noKey; S.sched = []; }
+    else { S.sched = j.departures || []; S.schedErr = ""; S.schedNeedsKey = S.schedNoKey = false; }
   }catch(e){ S.schedErr = e.message; S.sched = []; }
   S.schedAt = Date.now();
 }
@@ -518,8 +517,8 @@ function render(){
   // If WMATA's furthest prediction falls well short of the window, say so —
   // an apparently short board is otherwise indistinguishable from a bug.
   $("reach").textContent =
-      S.schedNeedsKey ? (S.schedOnDemo ? "own WMATA key needed for timetable"
-                                       : "timetable refused — GTFS subscription?")
+      S.schedNoKey ? "no WMATA key set"
+    : S.schedNeedsKey ? "timetable refused — GTFS subscription?"
     : (fill.length ? "live to " + furthest + " min, then timetable"
     : (list.length && furthest < CFG.lookAhead - 5
         ? "WMATA predicting " + furthest + " min out" : ""));
@@ -529,7 +528,7 @@ function render(){
   if(S.feedOk===false) feedNote = S.rateLimited ? "rate limited, retrying" : "feed down, retrying";
   else if(ageSec > 120) feedNote = "last data " + Math.round(ageSec/60) + " min old";
   else feedNote = "updated " + fmtClock(new Date(S.lastFetch));
-  const mode = S.demo ? "Demo" : (S.demoKey ? "Demo key" : "Live");
+  const mode = S.demo ? "Demo" : "Live";
   $("statusline").textContent = mode + " · " + feedNote;
 
   if(!target){

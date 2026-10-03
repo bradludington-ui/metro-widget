@@ -124,7 +124,49 @@ const unq = f => (f && f.length > 1 && f[0] === '"' && f[f.length - 1] === '"')
 
 /* --------------------------- Feed ---------------------------- */
 
-let CACHE = null, CACHE_AT = 0, CACHE_STATIONS = "";
+// Built timetables, kept two ways so WMATA's full zip is downloaded about
+// twice a day rather than on every cold start:
+//   - in memory, for as long as this Worker instance lives;
+//   - in the TIMETABLE KV namespace (see wrangler.jsonc), shared by every
+//     instance, for 12 hours.
+// Both are keyed on a hash of the API key as well as the stations, so a
+// timetable fetched with one key is never served for another.
+const MEM = new Map();
+
+async function keyId(key) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key || ""));
+  return [...new Uint8Array(h)].slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * The timetable for the given stations, from memory, KV or WMATA.
+ * The result carries `source` ("memory", "kv" or "wmata") for diagnostics.
+ */
+export async function loadRailSchedule(env, stations, force = false) {
+  const key = env.WMATA_KEY;
+  const tag = stations.slice().sort().join(",") + ":" + await keyId(key);
+  const kvKey = "gtfs:v1:" + tag;
+  const fresh = s => s && Date.now() - s.builtAt < TTL_MS;
+
+  if (!force) {
+    const m = MEM.get(tag);
+    if (fresh(m)) return { ...m, source: "memory" };
+    if (env.TIMETABLE) {
+      try {
+        const k = await env.TIMETABLE.get(kvKey, "json");
+        if (fresh(k)) { MEM.set(tag, k); return { ...k, source: "kv" }; }
+      } catch (e) { /* KV trouble just means a fresh download */ }
+    }
+  }
+
+  const built = await buildFromWmata(key, stations);
+  MEM.set(tag, built);
+  if (env.TIMETABLE) {
+    try { await env.TIMETABLE.put(kvKey, JSON.stringify(built), { expirationTtl: TTL_MS / 1000 }); }
+    catch (e) { /* still served from memory */ }
+  }
+  return { ...built, source: "wmata" };
+}
 
 /**
  * Build a small index for just the stations we care about.
@@ -132,14 +174,11 @@ let CACHE = null, CACHE_AT = 0, CACHE_STATIONS = "";
  * platform-level stop ids that embed the station code, so a substring
  * match catches every platform without needing the station hierarchy.
  */
-export async function loadRailSchedule(key, stations, force = false) {
-  const tag = stations.slice().sort().join(",");
-  if (!force && CACHE && CACHE_STATIONS === tag && Date.now() - CACHE_AT < TTL_MS) return CACHE;
-
+async function buildFromWmata(key, stations) {
   // Always ask WMATA directly. Cloudflare's shared cache keys on the URL,
   // not the api_key header, so a cached response can belong to a different
   // key — a refusal fetched with the old demo key kept being served after a
-  // working key was added. The parsed result is still kept in memory above.
+  // working key was added. loadRailSchedule does the caching instead.
   const r = await fetch(GTFS_URL, { headers: { api_key: key }, cache: "no-store" });
   if (r.status === 401 || r.status === 403) {
     const said = (await r.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 200);
@@ -220,15 +259,21 @@ export async function loadRailSchedule(key, stations, force = false) {
     }
   }
 
-  CACHE = {
-    trips,
+  // Keep only the trips that stop at these stations; the rest of the
+  // network's trips would just bloat what gets stored in KV.
+  const kept = {};
+  for (const code of stations) {
+    for (const row of byStation[code]) if (trips[row.trip]) kept[row.trip] = trips[row.trip];
+  }
+
+  return {
+    trips: kept,
+    tripsInFeed: Object.keys(trips).length,
     byStation,
     calendar: parseCsv(files["calendar.txt"] || ""),
     calendarDates: parseCsv(files["calendar_dates.txt"] || ""),
     builtAt: Date.now(),
   };
-  CACHE_AT = Date.now(); CACHE_STATIONS = tag;
-  return CACHE;
 }
 
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -253,9 +298,9 @@ function servicesOn(sched, parts) {
  * Scheduled departures from one station, filtered by line and by the
  * headsign that establishes direction.
  */
-export async function scheduledDepartures({ key, station, line, headsign,
+export async function scheduledDepartures({ env, station, line, headsign,
                                             now = Date.now(), horizonMin = 90, limit = 20 }) {
-  const sched = await loadRailSchedule(key, [station]);
+  const sched = await loadRailSchedule(env, [station]);
   const wantLine = norm(line), wantHead = norm(headsign);
   const out = [];
 
@@ -286,12 +331,12 @@ export async function scheduledDepartures({ key, station, line, headsign,
   }
 
   out.sort((a, b) => a.epoch - b.epoch);
-  return { departures: out.slice(0, limit), builtAt: sched.builtAt };
+  return { departures: out.slice(0, limit), builtAt: sched.builtAt, source: sched.source };
 }
 
 // Diagnostic: how much of the feed did we actually index?
-export async function scheduleDiagnose(key, station) {
-  const sched = await loadRailSchedule(key, [station]);
+export async function scheduleDiagnose(env, station) {
+  const sched = await loadRailSchedule(env, [station]);
   const parts = tzParts(Date.now());
   const active = servicesOn(sched, parts);
   const rows = sched.byStation[station] || [];
@@ -302,7 +347,10 @@ export async function scheduleDiagnose(key, station) {
   }
   return {
     today: yyyymmdd(parts), weekday: parts.weekday,
-    tripsInFeed: Object.keys(sched.trips).length,
+    source: sched.source,
+    builtAt: new Date(sched.builtAt).toISOString(),
+    tripsInFeed: sched.tripsInFeed,
+    tripsKept: Object.keys(sched.trips).length,
     rowsForStation: rows.length,
     servicesActiveToday: active.size,
     headsignsSeen: heads,
