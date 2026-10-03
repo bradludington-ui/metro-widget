@@ -5,6 +5,8 @@ wrangler.jsonc
 .assetsignore
 
 # Repo housekeeping
+tests
+.github
 README.md
 .git
 .wrangler
