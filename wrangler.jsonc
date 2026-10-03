@@ -7,5 +7,11 @@
     // entries listed in .assetsignore.
     "directory": "./",
     "binding": "ASSETS"
-  }
+  },
+  // Built timetables, so WMATA's full GTFS zip is downloaded about twice a
+  // day instead of on every cold start. Optional: without it the Worker
+  // still works and keeps the timetable in memory only.
+  "kv_namespaces": [
+    { "binding": "TIMETABLE", "id": "80c946eb0bcb4611a727c7b0c7b5e3e0" }
+  ]
 }

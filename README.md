@@ -43,9 +43,15 @@ timetable is filling in, or "WMATA predicting 27 min out" when there's no timeta
 and live coverage stops short of your window.
 
 The timetable needs your own WMATA key, and possibly a GTFS subscription as well (see
-[The timetable](#the-timetable)). Until it's available the strip says "own WMATA key needed
-for timetable" and the board shows live predictions only. The Worker caches the timetable for 12 hours;
-`/api/schedule/debug?station=C09` shows what it parsed.
+[The timetable](#the-timetable)). Until it's available the strip says why
+("no WMATA key set" or "timetable refused — GTFS subscription?") and the board shows live
+predictions only.
+
+The full timetable is a large download, so the Worker builds a small index for your two
+stations and keeps it for 12 hours — in memory, and in a Workers KV namespace so it
+survives restarts (see [Timetable storage](#timetable-storage)). The download happens
+about twice a day. `/api/schedule/debug?station=C09` shows what it parsed and where it came
+from (`"source": "memory"`, `"kv"` or `"wmata"`).
 
 Each direction has its own walk time and buffer in ⚙, since the walk from your door isn't
 the walk from your desk.
@@ -54,9 +60,9 @@ the walk from your desk.
 
 ## 1. The API key
 
-**You need your own WMATA key.** It's free and takes a few minutes. As of October 2026,
-WMATA rejects the old shared demo key (`403`), so without your own key the board shows
-"WMATA rejected the shared demo key" and no trains.
+**You need your own WMATA key.** It's free and takes a few minutes. WMATA's old
+shared demo key stopped working in October 2026, so without your own key the board shows
+"No WMATA key set" and no trains.
 
 1. Sign up at <https://developer.wmata.com/> and confirm your email.
 2. Open the menu → **Products** → **Default Tier**, give the subscription any name
@@ -70,7 +76,7 @@ WMATA rejects the old shared demo key (`403`), so without your own key the board
    - Name: `WMATA_KEY`
    - Value: the key, with no spaces
 5. Deploy if prompted, then reopen the app. The dot turns green and the status line reads
-   "Live" instead of "Demo key".
+   "Live".
 
 Keep the key out of the repo and the page source — it belongs only in that Cloudflare
 secret, where the Worker reads it and the browser never sees it.
@@ -89,15 +95,16 @@ calls a day. Plenty of headroom.
 ### The timetable
 
 Filling the board past WMATA's 15–20 minute live horizon needs WMATA's timetable download
-(GTFS), which may be a separate product from Default Tier. If the METRO strip still says
-"own WMATA key needed for timetable" after you've added your key, look under **Products**
-for a GTFS product and subscribe to it with the same account. `/api/schedule/debug?station=J03`
+(GTFS), which may be a separate product from Default Tier. If the METRO strip says
+"timetable refused — GTFS subscription?" after you've added your key, look under
+**Products** for a GTFS product and subscribe to it with the same account. (With the key
+from October 2026, Default Tier covered it.) `/api/schedule/debug?station=J03`
 shows WMATA's exact answer. See [How far ahead it shows](#how-far-ahead-it-shows).
 
 ### No key set
 
-The Worker still falls back to the old demo key when `WMATA_KEY` is missing, so a fresh
-deploy without a key fails with a clear message rather than a crash.
+Without a `WMATA_KEY` secret the Worker doesn't call WMATA at all: the board says
+"No WMATA key set" with where to add it, and the METRO strip says the same.
 
 ---
 
@@ -110,7 +117,8 @@ server; on a static host like GitHub Pages they'd have to sit in the page's Java
 where anyone who views source could lift them.
 
 `wrangler.jsonc` holds the whole configuration: the Worker's name (`metro-widget`), its
-entry point (`worker.js`), and the repo root as the static-asset directory.
+entry point (`worker.js`), the repo root as the static-asset directory, and the KV
+namespace the timetable is stored in.
 `.assetsignore` keeps the Worker source, config and README from being served as files.
 
 ### First deploy
@@ -138,6 +146,19 @@ objected to.
   commit preview and a branch preview link, so you can try a change before merging it.
 - **Secrets aren't in the repo**, so they survive every deploy. Saving one in the
   dashboard applies it straight away; no push needed.
+
+### Timetable storage
+
+`wrangler.jsonc` binds a KV namespace as `TIMETABLE`
+(`metro-widget-timetable`, created in this account in October 2026). It holds the built
+timetable for each station, keyed on a short hash of your API key — never the key itself —
+and each entry expires after 12 hours. The free plan's KV limits are far above what this
+uses (a handful of writes a day).
+
+Deploying to a different Cloudflare account? Create a namespace there (**Storage &
+Databases → KV → Create**) and put its ID in `wrangler.jsonc`. Or delete the
+`kv_namespaces` block: the Worker then keeps the timetable in memory only and downloads it
+more often, but works the same.
 
 ---
 
