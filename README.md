@@ -208,6 +208,12 @@ The refresh setting in ⚙ is the *fastest* rate, used only when your countdown 
 five minutes. Further out it polls at half and then a third of that — about one call a
 minute while your train is still a way off.
 
+When the board can't be seen — minimized, in a background tab, or the phone locked — it
+stops calling WMATA altogether, unless you need to leave within 15 minutes; then it keeps
+polling so the heads-up and Go alerts still fire on fresh data. (Windows can count a window
+that's merely covered by others as hidden, which is why the alerts don't simply stop.)
+Bringing it back into view refreshes immediately.
+
 On errors it backs off — 2x, 4x, 8x the base interval, capped at five minutes — and the
 status line tells you whether it's a rate limit or a dead connection.
 
