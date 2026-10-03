@@ -99,26 +99,43 @@ deploy without a key fails with a clear message rather than a crash.
 
 ---
 
-## 2. Deploy on Cloudflare Pages (recommended)
+## 2. Deploy on Cloudflare Workers
 
-Cloudflare is the better host here because a **Pages Function** keeps your API key on the
-server. On GitHub Pages the key would have to sit in the client-side JavaScript, where anyone
-who views source can lift it.
+The site runs as a single **Cloudflare Worker**. `worker.js` answers the `/api/…` routes —
+calling WMATA (and HERE, for the drive page) with keys it reads from Cloudflare secrets —
+and hands every other request to the static files in the repo. Your keys stay on the
+server; on a static host like GitHub Pages they'd have to sit in the page's JavaScript,
+where anyone who views source could lift them.
+
+`wrangler.jsonc` holds the whole configuration: the Worker's name (`metro-widget`), its
+entry point (`worker.js`), and the repo root as the static-asset directory.
+`.assetsignore` keeps the Worker source, config and README from being served as files.
+
+### First deploy
 
 1. Push this folder to a GitHub repo (private is fine).
-2. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
+2. Cloudflare dashboard → **Workers & Pages** → **Create** → **Workers** →
+   **Import a repository**, and pick the repo.
 3. Build settings:
-   - Framework preset: **None**
-   - Build command: *(leave empty)*
-   - Build output directory: `/`
-4. Add your WMATA key (see section 1): **Settings → Variables and Secrets → Add**
-   - Type: **Secret**
-   - Name: `WMATA_KEY`
-   - Value: your key
-5. Redeploy. You'll get a URL like `https://next-train.pages.dev`.
+   - Build command: *(leave empty — there's nothing to build)*
+   - Deploy command: `npx wrangler deploy` (the default)
+   - Root directory: `/`
+4. Deploy. You'll get a URL like `https://metro-widget.<your-subdomain>.workers.dev`.
+5. Add your WMATA key (see section 1): **Settings → Variables and Secrets → Add**, type
+   **Secret**, name `WMATA_KEY`. Add `HERE_KEY` the same way if you use the drive page.
 
-Verify the proxy works by opening `https://your-site.pages.dev/api/trains?station=C09` —
-you should see JSON with a `Trains` array.
+Verify the proxy by opening `https://<your-site>/api/trains?station=C09` — you should see
+JSON with a `Trains` array. If you see an `error` field instead, it says what WMATA
+objected to.
+
+### After that
+
+- **Every push to `main` deploys automatically.** The build shows up as the
+  *Workers Builds: metro-widget* check on the commit.
+- **Other branches get preview URLs.** Pull requests get a comment from Cloudflare with a
+  commit preview and a branch preview link, so you can try a change before merging it.
+- **Secrets aren't in the repo**, so they survive every deploy. Saving one in the
+  dashboard applies it straight away; no push needed.
 
 ---
 
@@ -138,7 +155,7 @@ Chrome is the same idea: `⋮` → **Cast, save, and share** → **Install page 
 **If app installation is blocked by policy**, fall back to a desktop shortcut:
 
 ```
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app="https://your-site.pages.dev" --window-size=400,520 --window-position=1500,520
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app="https://metro-widget.<your-subdomain>.workers.dev" --window-size=400,520 --window-position=1500,520
 ```
 
 Adjust `--window-position` for your monitor — the numbers above put it near the bottom right
@@ -198,7 +215,7 @@ minute after your locked train arrives.
 
 ## Things that may bite you on a government machine
 
-- **The proxy may block `*.pages.dev` or `api.wmata.com`.** Test the `/api/trains` URL in a
+- **The proxy may block `*.workers.dev` or `api.wmata.com`.** Test the `/api/trains` URL in a
   browser tab before building any habits around this.
 - **Notifications need permission** and can be disabled by Group Policy. If the toast never
   appears, the in-window red flash still works — it's the primary signal, not the backup.
