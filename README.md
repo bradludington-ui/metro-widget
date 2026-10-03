@@ -38,9 +38,9 @@ The METRO strip says what you're looking at: "live to 18 min, then timetable" wh
 timetable is filling in, or "WMATA predicting 27 min out" when there's no timetable data
 and live coverage stops short of your window.
 
-The timetable usually needs your own WMATA key — the shared demo key generally can't
-download it. On the demo key the strip says "own WMATA key needed for timetable" and the
-board shows live predictions only. The Worker caches the timetable for 12 hours;
+The timetable needs your own WMATA key, and possibly a GTFS subscription as well (see
+[The timetable](#the-timetable)). Until it's available the strip says "own WMATA key needed
+for timetable" and the board shows live predictions only. The Worker caches the timetable for 12 hours;
 `/api/schedule/debug?station=C09` shows what it parsed.
 
 Outside both windows it sits quiet and tells you when the next one opens. Each leg has its
@@ -53,38 +53,49 @@ useful for a late start or an early departure. **Auto** hands control back to th
 
 ## 1. The API key
 
-**No account needed.** The proxy falls back to WMATA's published demo key
-(`e13626d03d8e4c03ac07f95541b3091b`) when no secret is set. Deploy and you have live
-trains. The status line reads "Demo key" so you always know which one you're on.
+**You need your own WMATA key.** It's free and takes a few minutes. As of October 2026,
+WMATA rejects the old shared demo key (`403`), so without your own key the board shows
+"WMATA rejected the shared demo key" and no trains.
 
-Know what you're running on, though:
+1. Sign up at <https://developer.wmata.com/> and confirm your email.
+2. Open the menu → **Products** → **Default Tier**, give the subscription any name
+   (e.g. "Next Train") and **Subscribe**.
+3. Menu → **Profile** → under **Subscriptions**, click **Show** next to **Primary key** and
+   copy it. It's a 32-character string. Don't click **Regenerate** unless you mean to
+   replace the key — that breaks the board until you update the secret below.
+4. Cloudflare dashboard → **Workers & Pages** → **metro-widget** → **Settings** →
+   **Variables and Secrets** → **Add**:
+   - Type: **Secret**
+   - Name: `WMATA_KEY`
+   - Value: the key, with no spaces
+5. Deploy if prompted, then reopen the app. The dot turns green and the status line reads
+   "Live" instead of "Demo key".
 
-- It's shared by every developer poking at the API, so the quota is whatever's left after
-  everyone else. Busy afternoons are exactly when it's most contended.
-- WMATA's terms of use scope it to testing, not production applications.
-- It can be rotated without notice. When that happens the widget won't crash, but it will
-  stop knowing where your trains are.
+Keep the key out of the repo and the page source — it belongs only in that Cloudflare
+secret, where the Worker reads it and the browser never sees it.
 
-The widget is built to survive all three: it polls slowly when your train is far off,
-backs off exponentially on errors, and keeps counting down from the last known arrival
-times rather than going blank. But a rotated key at 4:15 PM still means no board.
+You don't have to do this on your work machine. Register from a phone or personal computer
+and paste the key straight into the Cloudflare dashboard — it never touches the GFE.
 
-The demo key also usually can't download WMATA's timetable, so on it the board only shows
-live predictions — about 15–20 minutes out rather than your full look-ahead window. The
-METRO strip says "own WMATA key needed for timetable" when that's what's happening. See
-[How far ahead it shows](#how-far-ahead-it-shows).
+If the board says **"WMATA rejected your WMATA_KEY"**, the secret doesn't match your key:
+usually a stray space, the secondary key, or a key that was regenerated since. Open
+`/api/trains?station=J03` on your site to see WMATA's exact reply.
 
-If you get your own key later it takes two minutes and none of this applies:
+Free tier limits: 10 calls/second, 50,000 calls/day. This widget polls at most every 20
+seconds and only inside its watch windows — a few hundred calls a day. Plenty of headroom.
 
-1. Sign up at <https://developer.wmata.com/>
-2. Subscribe to the **Default Tier** product.
-3. Copy your primary key. It's a 32-character string.
+### The timetable
 
-You don't have to do this on your work machine. Register from a personal computer and
-paste the key straight into the Cloudflare dashboard — it never touches the GFE.
+Filling the board past WMATA's 15–20 minute live horizon needs WMATA's timetable download
+(GTFS), which may be a separate product from Default Tier. If the METRO strip still says
+"own WMATA key needed for timetable" after you've added your key, look under **Products**
+for a GTFS product and subscribe to it with the same account. `/api/schedule/debug?station=J03`
+shows WMATA's exact answer. See [How far ahead it shows](#how-far-ahead-it-shows).
 
-Free tier limits: 10 calls/second, 50,000 calls/day. This widget polls once every 20 seconds
-during your afternoon window — roughly 500 calls/day. Plenty of headroom.
+### No key set
+
+The Worker still falls back to the old demo key when `WMATA_KEY` is missing, so a fresh
+deploy without a key fails with a clear message rather than a crash.
 
 ---
 
@@ -100,7 +111,7 @@ who views source can lift it.
    - Framework preset: **None**
    - Build command: *(leave empty)*
    - Build output directory: `/`
-4. Once you have your own key: **Settings → Variables and Secrets → Add**
+4. Add your WMATA key (see section 1): **Settings → Variables and Secrets → Add**
    - Type: **Secret**
    - Name: `WMATA_KEY`
    - Value: your key
