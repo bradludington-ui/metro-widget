@@ -284,10 +284,10 @@ function paint(j){
     const crash = i.kind === "Accident";
     const where = [i.road, i.from && ("near " + i.from)].filter(Boolean).join(" · ");
     const cost = i.delaySec > 60 ? "+" + Math.round(i.delaySec/60) + "m"
-               : (i.criticality >= 3 ? "major" : i.criticality === 2 ? "moderate" : "");
+               : (["", "minor", "major", "critical"][i.criticality] || "");   // HERE's own grades
     return '<div class="inc"><div class="icon' + (crash?" crash":"") + '">' +
       (crash ? "!" : "▲") + '</div><div class="body"><b>' +
-      (i.description || i.kind) + '</b><span>' + (where || i.kind) + '</span></div>' +
+      escapeHtml(i.description || i.kind) + '</b><span>' + escapeHtml(where || i.kind) + '</span></div>' +
       '<span class="cost">' + cost + '</span></div>';
   }).join("") : '<span class="clear">Nothing reported on her route.</span>';
 
@@ -297,7 +297,7 @@ function paint(j){
   if(slow.length){
     $("slow").innerHTML = slow.map(x=>{
       const pct = Math.min(100, (x.jamFactor||0)*10);
-      return '<div class="slowrow"><b>' + x.road + '</b>' +
+      return '<div class="slowrow"><b>' + escapeHtml(x.road) + '</b>' +
         '<span class="bar"><i class="' + (pct>60?"hot":"") + '" style="width:' + pct + '%"></i></span>' +
         '<span class="cost">+' + Math.max(1, Math.round(x.delaySec/60)) + 'm</span></div>';
     }).join("");
