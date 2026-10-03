@@ -117,6 +117,10 @@ const hmsToSec = s => {
 };
 
 const norm = t => (t || "").toLowerCase().replace(/[^a-z]/g, "");
+// The line scans below split on commas without a full CSV parse, so strip the
+// quotes WMATA puts around text fields ("Largo" -> Largo).
+const unq = f => (f && f.length > 1 && f[0] === '"' && f[f.length - 1] === '"')
+  ? f.slice(1, -1).replace(/""/g, '"') : (f || "");
 
 /* --------------------------- Feed ---------------------------- */
 
@@ -151,12 +155,13 @@ export async function loadRailSchedule(key, stations, force = false) {
   const files = await readZip(await r.arrayBuffer(),
     ["stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar.txt", "calendar_dates.txt"]);
 
-  const routeName = {}, routeMatch = {};
+  const routeName = {}, routeMatch = {}, routeShort = {};
   for (const x of parseCsv(files["routes.txt"] || "")) {
     routeName[x.route_id] = x.route_short_name || x.route_long_name || x.route_id;
     // Match on short name, long name and id together: WMATA's short name is
     // "BL" while the line is spoken of as "Blue", and either may be asked for.
     routeMatch[x.route_id] = norm([x.route_short_name, x.route_long_name, x.route_id].join(" "));
+    routeShort[x.route_id] = norm(x.route_short_name);
   }
 
   // trips.txt is thousands of rows; a line scan avoids building an object
@@ -165,19 +170,20 @@ export async function loadRailSchedule(key, stations, force = false) {
   {
     const tt = new TextDecoder().decode(files["trips.txt"] || new Uint8Array());
     const nl0 = tt.indexOf("\n");
-    const h = tt.slice(0, nl0).replace(/\uFEFF/g, "").trim().split(",");
+    const h = tt.slice(0, nl0).replace(/\uFEFF/g, "").trim().split(",").map(unq);
     const iR = h.indexOf("route_id"), iS = h.indexOf("service_id");
     const iT = h.indexOf("trip_id"), iH = h.indexOf("trip_headsign");
     let q = nl0 + 1;
     while (q < tt.length) {
       let e = tt.indexOf("\n", q);
       if (e < 0) e = tt.length;
-      const c = tt.slice(q, e).split(",");
+      const c = tt.slice(q, e).replace(/\r$/, "").split(",").map(unq);
       q = e + 1;
       if (c.length <= iT || !c[iT]) continue;
       trips[c[iT]] = {
         route: routeName[c[iR]] || c[iR],
         match: routeMatch[c[iR]] || norm(c[iR]),
+        short: routeShort[c[iR]] || "",
         service: c[iS],
         headsign: iH >= 0 ? (c[iH] || "") : "",
       };
@@ -188,7 +194,7 @@ export async function loadRailSchedule(key, stations, force = false) {
   // rejects nearly all of them before any splitting happens.
   const text = new TextDecoder().decode(files["stop_times.txt"] || new Uint8Array());
   const nl = text.indexOf("\n");
-  const head = text.slice(0, nl).replace(/\uFEFF/g, "").trim().split(",");
+  const head = text.slice(0, nl).replace(/\uFEFF/g, "").trim().split(",").map(unq);
   const iTrip = head.indexOf("trip_id");
   const iDep = head.indexOf("departure_time");
   const iStop = head.indexOf("stop_id");
@@ -205,7 +211,7 @@ export async function loadRailSchedule(key, stations, force = false) {
     pos = end + 1;
     for (const code of stations) {
       if (line.indexOf(code) === -1) continue;
-      const c = line.split(",");
+      const c = line.replace(/\r$/, "").split(",").map(unq);
       if (!c[iStop] || c[iStop].indexOf(code) === -1) break;   // matched elsewhere in the row
       const dep = hmsToSec(c[iDep]);
       if (dep === null) break;
@@ -262,8 +268,15 @@ export async function scheduledDepartures({ key, station, line, headsign,
     for (const row of sched.byStation[station] || []) {
       const t = sched.trips[row.trip];
       if (!t || !active.has(t.service)) continue;
-      if (wantLine && t.match.indexOf(wantLine) === -1) continue;
-      if (wantHead && norm(t.headsign).indexOf(wantHead) === -1) continue;
+      // Line: "BL" against a short name of "B" or a long name of "Blue".
+      if (wantLine && t.match.indexOf(wantLine) === -1 &&
+          !(t.short && wantLine.startsWith(t.short))) continue;
+      // Direction: the board says "Downtown Largo", the feed says "Largo".
+      // Either one containing the other is a match.
+      if (wantHead) {
+        const h = norm(t.headsign);
+        if (!h || (h.indexOf(wantHead) === -1 && wantHead.indexOf(h) === -1)) continue;
+      }
       const epoch = midnight + row.dep * 1000;
       if (epoch < now) continue;
       if (epoch > now + horizonMin * 60000) continue;

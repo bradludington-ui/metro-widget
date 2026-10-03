@@ -3,12 +3,16 @@
 A small desk widget that watches WMATA's real-time Blue Line predictions, subtracts your
 walk time, and tells you when to move.
 
-It covers both directions of the day and switches between them on its own:
+It covers both directions of the day, picked by the clock:
 
-| Leg | Board at | Watching for | Default window |
+| Button | Board at | Watching for | Shown by default |
 |---|---|---|---|
-| Morning | Franconia-Springfield (`J03`) | Blue Line to Downtown Largo (`G05`) | 6:00 – 9:00 AM |
-| Evening | Crystal City (`C09`) | Blue Line to Franconia-Springfield (`J03`) | 2:30 – 7:00 PM |
+| **AM** | Franconia-Springfield (`J03`) | Blue Line to Downtown Largo (`G05`) | midnight – 11:59 AM |
+| **PM** | Crystal City (`C09`) | Blue Line to Franconia-Springfield (`J03`) | noon – 11:59 PM |
+
+Tap **AM** or **PM** in the footer to check the other direction — useful for a late start
+or an early departure. Your pick holds until the next noon or midnight, then the board goes
+back to following the clock, so a board left open all day still flips to PM at noon.
 
 ### Readability
 
@@ -43,11 +47,8 @@ The timetable needs your own WMATA key, and possibly a GTFS subscription as well
 for timetable" and the board shows live predictions only. The Worker caches the timetable for 12 hours;
 `/api/schedule/debug?station=C09` shows what it parsed.
 
-Outside both windows it sits quiet and tells you when the next one opens. Each leg has its
-own walk time and buffer, since the walk from your desk isn't the walk from your car.
-
-The AM / PM buttons in the footer force a leg when you want to check the other direction —
-useful for a late start or an early departure. **Auto** hands control back to the clock.
+Each direction has its own walk time and buffer in ⚙, since the walk from your door isn't
+the walk from your desk.
 
 ---
 
@@ -82,7 +83,8 @@ usually a stray space, the secondary key, or a key that was regenerated since. O
 `/api/trains?station=J03` on your site to see WMATA's exact reply.
 
 Free tier limits: 10 calls/second, 50,000 calls/day. This widget polls at most every 20
-seconds and only inside its watch windows — a few hundred calls a day. Plenty of headroom.
+seconds, and only while it's open — even left open around the clock that's under 5,000
+calls a day. Plenty of headroom.
 
 ### The timetable
 
@@ -175,17 +177,18 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
   permission until you've interacted with the page. Until you do, a **🔇 Sound** button sits
   in the footer as a reminder; the first tap or keypress anywhere enables the chime, asks
   for notification permission and hides the button. The red screen flash works without it.
-- Nothing appears on the board until **2:30 PM**, Monday–Friday. Both are adjustable in ⚙.
-- **Demo** fakes a train feed so you can watch the whole alert sequence without waiting until
-  the afternoon. Turn it off before you rely on it.
+- It tracks trains whenever it's open — mornings show **AM**, afternoons and evenings show
+  **PM**. Close it when you don't need it.
+- **Demo** fakes a train feed so you can watch the whole alert sequence without waiting for a
+  real train. Turn it off before you rely on it.
 - **Test alert** fires the chime and notification once.
 - `Esc` dismisses an active alert.
 
 ### Call volume
 
 The refresh setting in ⚙ is the *fastest* rate, used only when your countdown is under
-five minutes. Further out it polls at half and then a third of that. With the defaults
-and a 2:30–6:00 PM window that's roughly 200 calls a day rather than 630.
+five minutes. Further out it polls at half and then a third of that — about one call a
+minute while your train is still a way off.
 
 On errors it backs off — 2x, 4x, 8x the base interval, capped at five minutes — and the
 status line tells you whether it's a rate limit or a dead connection.

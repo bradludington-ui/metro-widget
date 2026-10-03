@@ -132,9 +132,6 @@
     border-radius:3px;padding:5px 7px;font:600 12px/1 monospace}
   .field input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue)}
   .hint{font-size:11px;color:#8A8078;line-height:1.5;margin:-3px 0 11px}
-  .days{display:flex;gap:4px}
-  .days button{padding:6px 0;width:30px;text-align:center;font-size:10.5px}
-  .days button[aria-pressed=true]{background:var(--blue);border-color:#005A93}
 </style>
 </head>
 <body>
@@ -164,7 +161,6 @@
   <footer>
     <button class="primary" id="soundBtn" hidden title="Browsers keep sound off until you tap the page. Tap to turn alert sound on." aria-label="Enable sound">🔇 Sound</button>
     <div class="legpick">
-      <button id="legAuto" aria-pressed="true">Auto</button>
       <button id="legAm" aria-pressed="false">AM</button>
       <button id="legPm" aria-pressed="false">PM</button>
     </div>
@@ -182,17 +178,12 @@
     <h3>Morning<span>Franconia-Springfield → Downtown Largo</span></h3>
     <div class="field"><label for="am_walk">Walk to platform (min)</label><input type="number" id="am_walk" min="0" max="60"></div>
     <div class="field"><label for="am_buffer">Safety buffer (min)</label><input type="number" id="am_buffer" min="0" max="20"></div>
-    <div class="field"><label for="am_from">Watch from</label><input type="time" id="am_from"></div>
-    <div class="field"><label for="am_to">Stop watching at</label><input type="time" id="am_to"></div>
 
     <h3>Evening<span>Crystal City → Franconia-Springfield</span></h3>
     <div class="field"><label for="pm_walk">Walk to platform (min)</label><input type="number" id="pm_walk" min="0" max="60"></div>
     <div class="field"><label for="pm_buffer">Safety buffer (min)</label><input type="number" id="pm_buffer" min="0" max="20"></div>
-    <div class="field"><label for="pm_from">Watch from</label><input type="time" id="pm_from"></div>
-    <div class="field"><label for="pm_to">Stop watching at</label><input type="time" id="pm_to"></div>
 
     <h3>Both<span>Applies to morning and evening</span></h3>
-    <div class="field"><label>Active days</label><div class="days" id="days"></div></div>
     <div class="field"><label for="snd">Chime on alert</label><input type="checkbox" id="snd"></div>
     <div class="field"><label for="vol">Chime volume</label><input type="number" id="vol" min="0" max="100"></div>
     <div class="field"><label for="notif">System notification</label><input type="checkbox" id="notif"></div>
@@ -229,9 +220,9 @@ const LEGS = {
 };
 
 const DEFAULTS = {
-  am:{ walk:6, buffer:2, from:"06:00", to:"09:00" },
-  pm:{ walk:8, buffer:2, from:"14:30", to:"19:00" },
-  days:[1,2,3,4,5], snd:true, vol:55, notif:true, poll:20, keepAwake:true, lookAhead:60, textSize:1
+  am:{ walk:6, buffer:2 },
+  pm:{ walk:8, buffer:2 },
+  snd:true, vol:55, notif:true, poll:20, keepAwake:true, lookAhead:60, textSize:1
 };
 let CFG = JSON.parse(JSON.stringify(DEFAULTS));
 const KEY = "metro-widget-cfg";
@@ -258,7 +249,8 @@ const S = {
   sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedOnDemo:true,
   lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
   wake:null,          // WakeLockSentinel, when the screen is being held on
-  override:null,      // null = auto, or "am" / "pm"
+  override:null,      // "am" / "pm" after a tap, until the next noon or midnight
+  overrideHalf:"",
   legId:null          // leg currently displayed
 };
 const $ = id => document.getElementById(id);
@@ -322,27 +314,18 @@ document.addEventListener("visibilitychange", ()=>{
 /* ------------------------------------------------------------------ *
  * Which leg is live right now
  * ------------------------------------------------------------------ */
-function mins(hhmm){ const [h,m]=hhmm.split(":").map(Number); return h*60+m; }
-function inWindow(now, id){
-  if(!CFG.days.includes(now.getDay())) return false;
-  const t = now.getHours()*60 + now.getMinutes();
-  return t >= mins(CFG[id].from) && t < mins(CFG[id].to);
-}
+// Morning (AM) until 11:59, evening (PM) from noon. Tapping AM or PM
+// overrides that until the next noon or midnight, so a board left open all
+// day still flips on its own.
+function halfOf(now){ return now.getHours() < 12 ? "am" : "pm"; }
+function halfKey(now){ return now.toDateString() + " " + halfOf(now); }
 function activeLegId(now){
-  if(S.override) return S.override;
-  if(inWindow(now,"am")) return "am";
-  if(inWindow(now,"pm")) return "pm";
-  return null;
+  if(S.override && S.overrideHalf === halfKey(now)) return S.override;
+  S.override = null;
+  return halfOf(now);
 }
-function nextWindow(now){
-  const t = now.getHours()*60 + now.getMinutes();
-  if(t < mins(CFG.am.from)) return {id:"am", at:CFG.am.from};
-  if(t < mins(CFG.pm.from)) return {id:"pm", at:CFG.pm.from};
-  return {id:"am", at:CFG.am.from, tomorrow:true};
-}
-// The leg we're actually showing. In Demo, default to PM so there's
-// always something to look at.
-function L(){ return LEGS[S.legId || S.override || "pm"]; }
+// The leg we're actually showing.
+function L(){ return LEGS[S.legId || halfOf(new Date())]; }
 
 function setLeg(id){
   if(S.legId === id) return;
@@ -475,37 +458,20 @@ function fmtShort(d){
   return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})
           .replace(/\s*AM$/i,"a").replace(/\s*PM$/i,"p");
 }
-function hhmmLabel(hhmm){
-  const [h,m]=hhmm.split(":").map(Number);
-  const d=new Date(); d.setHours(h,m,0,0); return fmtClock(d);
-}
 
 function render(){
   const now = new Date();
   $("clock").textContent = fmtClock(now);
   $("dot").className = "dot" + (S.running ? (S.feedOk===false ? " err" : " on") : "");
 
-  const wanted = S.demo ? (S.override || S.legId || "pm") : activeLegId(now);
-  if(wanted) setLeg(wanted);
+  setLeg(activeLegId(now));
+  paintLegPick();
   const leg = L();
   $("route").innerHTML = leg.fromName + ' <i>→</i> ' + leg.toName;
   $("lede").textContent = leg.leaveLede;
 
   if(!S.running){
     $("statusline").textContent = "Standby";
-    return;
-  }
-
-  if(!S.demo && !wanted){
-    const nx = nextWindow(now);
-    $("statusline").textContent = "Armed · next window " + hhmmLabel(nx.at);
-    $("rows").innerHTML=""; $("empty").style.display="";
-    $("empty").innerHTML = "Quiet until <b>" + hhmmLabel(nx.at) + "</b>" +
-      (nx.tomorrow ? " tomorrow" : "") + ".<br>" + LEGS[nx.id].label.toLowerCase() +
-      " run: " + LEGS[nx.id].fromName + " to " + LEGS[nx.id].toName + ".";
-    $("count").textContent="—"; $("countunit").textContent="";
-    $("sub").textContent="Outside both watch windows.";
-    app.classList.remove("heads","go");
     return;
   }
 
@@ -563,7 +529,7 @@ function render(){
   if(S.feedOk===false) feedNote = S.rateLimited ? "rate limited, retrying" : "feed down, retrying";
   else if(ageSec > 120) feedNote = "last data " + Math.round(ageSec/60) + " min old";
   else feedNote = "updated " + fmtClock(new Date(S.lastFetch));
-  const mode = S.demo ? "Demo" : (S.override ? leg.label + " (held)" : (S.demoKey ? "Demo key" : "Live"));
+  const mode = S.demo ? "Demo" : (S.demoKey ? "Demo key" : "Live");
   $("statusline").textContent = mode + " · " + feedNote;
 
   if(!target){
@@ -620,7 +586,6 @@ function pollInterval(){
 setInterval(render, 1000);
 setInterval(async ()=>{
   if(!S.running) return;
-  if(!S.demo && !activeLegId(new Date())) return;
   if(Date.now() - S.schedAt > 600000) fetchSchedule();
   if(Date.now() - S.lastFetch < pollInterval() - 500) return;
   await fetchTrains();
@@ -659,12 +624,14 @@ document.addEventListener("keydown", onFirstGesture, true);
 $("soundBtn").onclick = ()=>{ unlockAudio(true); chime("heads"); };
 
 function paintLegPick(){
-  $("legAuto").setAttribute("aria-pressed", !S.override);
-  $("legAm").setAttribute("aria-pressed", S.override==="am");
-  $("legPm").setAttribute("aria-pressed", S.override==="pm");
+  const id = L().id;
+  $("legAm").setAttribute("aria-pressed", id==="am");
+  $("legPm").setAttribute("aria-pressed", id==="pm");
 }
-function chooseLeg(v){ S.override = v; paintLegPick(); if(v) setLeg(v); S.lastFetch=0; render(); }
-$("legAuto").onclick = ()=> chooseLeg(null);
+function chooseLeg(v){
+  S.override = v; S.overrideHalf = halfKey(new Date());
+  setLeg(v); paintLegPick(); render(); fetchTrains().then(render); fetchSchedule();
+}
 $("legAm").onclick   = ()=> chooseLeg("am");
 $("legPm").onclick   = ()=> chooseLeg("pm");
 
@@ -681,19 +648,9 @@ $("testBtn").onclick = ()=>{
   setTimeout(()=>{ if(!S.goFired) app.classList.remove("go"); }, 4000);
 };
 
-const dayNames=["Su","Mo","Tu","We","Th","Fr","Sa"];
-dayNames.forEach((d,i)=>{
-  const b=document.createElement("button");
-  b.textContent=d; b.setAttribute("aria-pressed", CFG.days.includes(i));
-  b.onclick=()=>{ const on=b.getAttribute("aria-pressed")==="true";
-    b.setAttribute("aria-pressed",!on);
-    CFG.days = on ? CFG.days.filter(x=>x!==i) : CFG.days.concat(i).sort(); };
-  $("days").appendChild(b);
-});
 function fillGear(){
   for(const id of ["am","pm"]){
     $(id+"_walk").value=CFG[id].walk; $(id+"_buffer").value=CFG[id].buffer;
-    $(id+"_from").value=CFG[id].from; $(id+"_to").value=CFG[id].to;
   }
   $("snd").checked=CFG.snd; $("vol").value=CFG.vol; $("notif").checked=CFG.notif;
   $("poll").value=CFG.poll;
@@ -705,8 +662,6 @@ $("gearBtn").onclick=()=>{ fillGear(); $("settings").classList.add("open"); };
 $("closeGear").onclick=()=>{
   for(const id of ["am","pm"]){
     CFG[id].walk=+$(id+"_walk").value||0; CFG[id].buffer=+$(id+"_buffer").value||0;
-    CFG[id].from=$(id+"_from").value||DEFAULTS[id].from;
-    CFG[id].to=$(id+"_to").value||DEFAULTS[id].to;
   }
   CFG.snd=$("snd").checked; CFG.vol=+$("vol").value; CFG.notif=$("notif").checked;
   CFG.poll=Math.max(10,+$("poll").value||20);
