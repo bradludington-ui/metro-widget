@@ -255,7 +255,7 @@ const API_SCHED = "/api/schedule";
 const S = {
   running:false, demo:false, trains:[], lastFetch:0, feedOk:null,
   errCount:0, nextTry:0, rateLimited:false, demoKey:false, errHint:"",
-  sched:[], schedAt:0, schedErr:"", schedNeedsKey:false,
+  sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedOnDemo:true,
   lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
   wake:null,          // WakeLockSentinel, when the screen is being held on
   override:null,      // null = auto, or "am" / "pm"
@@ -415,7 +415,8 @@ async function fetchSchedule(){
     const r = await fetch(API_SCHED + "?station=" + leg.from + "&line=" + encodeURIComponent(leg.line) +
       "&headsign=" + encodeURIComponent(leg.headsign) + "&horizon=" + CFG.lookAhead, {cache:"no-store"});
     const j = await r.json();
-    if(j.error){ S.schedErr = j.error; S.schedNeedsKey = !!j.needsOwnKey; S.sched = []; }
+    if(j.error){ S.schedErr = j.error; S.schedNeedsKey = !!j.needsOwnKey;
+                 S.schedOnDemo = j.usingDemoKey !== false; S.sched = []; }
     else { S.sched = j.departures || []; S.schedErr = ""; S.schedNeedsKey = false; }
   }catch(e){ S.schedErr = e.message; S.sched = []; }
   S.schedAt = Date.now();
@@ -551,7 +552,8 @@ function render(){
   // If WMATA's furthest prediction falls well short of the window, say so —
   // an apparently short board is otherwise indistinguishable from a bug.
   $("reach").textContent =
-      S.schedNeedsKey ? "own WMATA key needed for timetable"
+      S.schedNeedsKey ? (S.schedOnDemo ? "own WMATA key needed for timetable"
+                                       : "timetable refused — GTFS subscription?")
     : (fill.length ? "live to " + furthest + " min, then timetable"
     : (list.length && furthest < CFG.lookAhead - 5
         ? "WMATA predicting " + furthest + " min out" : ""));

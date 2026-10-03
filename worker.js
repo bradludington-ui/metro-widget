@@ -20,7 +20,7 @@ export default {
     if (url.pathname === "/api/schedule/debug") {
       const key = env.WMATA_KEY || DEMO_KEY;
       try { return json(await scheduleDiagnose(key, url.searchParams.get("station") || "C09"), 200); }
-      catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200); }
+      catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey, usingDemoKey: !env.WMATA_KEY }, 200); }
     }
     if (url.pathname === "/api/traffic") {
       return traffic(url, env);
@@ -83,7 +83,7 @@ async function schedule(url, env) {
     const r = await scheduledDepartures({ key, station, line, headsign, horizonMin });
     return json({ usingDemoKey: !env.WMATA_KEY, ...r }, 200);
   } catch (e) {
-    return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200);
+    return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey, usingDemoKey: !env.WMATA_KEY }, 200);
   }
 }
 
