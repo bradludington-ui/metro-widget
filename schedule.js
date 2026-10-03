@@ -132,18 +132,17 @@ export async function loadRailSchedule(key, stations, force = false) {
   const tag = stations.slice().sort().join(",");
   if (!force && CACHE && CACHE_STATIONS === tag && Date.now() - CACHE_AT < TTL_MS) return CACHE;
 
-  const r = await fetch(GTFS_URL, {
-    headers: { api_key: key },
-    // Cache successes only. Cloudflare's cache key is the URL, not the key
-    // header, so a cached refusal (say, from the old demo key) would keep
-    // being served for 12 hours after a working key was added.
-    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 43200, "300-599": 0 } },
-  });
+  // Always ask WMATA directly. Cloudflare's shared cache keys on the URL,
+  // not the api_key header, so a cached response can belong to a different
+  // key — a refusal fetched with the old demo key kept being served after a
+  // working key was added. The parsed result is still kept in memory above.
+  const r = await fetch(GTFS_URL, { headers: { api_key: key }, cache: "no-store" });
   if (r.status === 401 || r.status === 403) {
-    const e = new Error("WMATA refused the GTFS download (" + r.status +
-      "). The GTFS feed may be a separate subscription from the Default Tier — " +
-      "on developer.wmata.com, check Products for a GTFS product and subscribe " +
-      "to it with the account that owns your key.");
+    const said = (await r.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 200);
+    const e = new Error("WMATA refused the GTFS download (" + r.status + ")" +
+      (said ? ": " + said : "") + ". The GTFS feed may be a separate subscription " +
+      "from the Default Tier — on developer.wmata.com, check Products for a GTFS " +
+      "product and subscribe to it with the account that owns your key.");
     e.needsOwnKey = true;
     throw e;
   }
