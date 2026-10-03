@@ -182,6 +182,7 @@ minute after your locked train arrives.
 | `index.html` | The entire widget — UI, alert logic, audio, no dependencies |
 | `worker.js` | Worker entry point: WMATA proxy and traffic endpoints |
 | `traffic.js` | HERE routing and incidents |
+| `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
 | `manifest.webmanifest` | Makes it installable as a taskbar app |
 | `sw.js` | Service worker; required for installability, never caches train data |
 | `icon-192.png`, `icon-512.png` | App icons |
