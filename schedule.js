@@ -134,12 +134,16 @@ export async function loadRailSchedule(key, stations, force = false) {
 
   const r = await fetch(GTFS_URL, {
     headers: { api_key: key },
-    cf: { cacheTtl: 43200, cacheEverything: true },
+    // Cache successes only. Cloudflare's cache key is the URL, not the key
+    // header, so a cached refusal (say, from the old demo key) would keep
+    // being served for 12 hours after a working key was added.
+    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 43200, "300-599": 0 } },
   });
   if (r.status === 401 || r.status === 403) {
     const e = new Error("WMATA refused the GTFS download (" + r.status +
-      "). The GTFS feed is a separate subscription from the Default Tier — " +
-      "the shared demo key usually can't reach it.");
+      "). The GTFS feed may be a separate subscription from the Default Tier — " +
+      "on developer.wmata.com, check Products for a GTFS product and subscribe " +
+      "to it with the account that owns your key.");
     e.needsOwnKey = true;
     throw e;
   }
