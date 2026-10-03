@@ -1,8 +1,5 @@
-// Workers entry point. Serves /api/trains itself and hands everything
+// Workers entry point. Serves the /api/ routes itself and hands everything
 // else to the static assets (index.html, sw.js, icons).
-//
-// This is the Workers equivalent of functions/api/trains.js — keep whichever
-// one matches how you deployed. Having both in the repo is harmless.
 
 import { hereTraffic, hereDiagnose } from "./traffic.js";
 import { scheduledDepartures, scheduleDiagnose } from "./schedule.js";
