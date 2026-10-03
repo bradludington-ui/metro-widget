@@ -111,10 +111,10 @@ Without a `WMATA_KEY` secret the Worker doesn't call WMATA at all: the board say
 ## 2. Deploy on Cloudflare Workers
 
 The site runs as a single **Cloudflare Worker**. `worker.js` answers the `/api/…` routes —
-calling WMATA (and HERE, for the drive page) with keys it reads from Cloudflare secrets —
-and hands every other request to the static files in the repo. Your keys stay on the
-server; on a static host like GitHub Pages they'd have to sit in the page's JavaScript,
-where anyone who views source could lift them.
+calling WMATA with the key it reads from a Cloudflare secret —
+and hands every other request to the static files in the repo. Your key stays on the
+server; on a static host like GitHub Pages it would have to sit in the page's JavaScript,
+where anyone who views source could lift it.
 
 `wrangler.jsonc` holds the whole configuration: the Worker's name (`metro-widget`), its
 entry point (`worker.js`), the repo root as the static-asset directory, and the KV
@@ -132,7 +132,7 @@ namespace the timetable is stored in.
    - Root directory: `/`
 4. Deploy. You'll get a URL like `https://metro-widget.<your-subdomain>.workers.dev`.
 5. Add your WMATA key (see section 1): **Settings → Variables and Secrets → Add**, type
-   **Secret**, name `WMATA_KEY`. Add `HERE_KEY` the same way if you use the drive page.
+   **Secret**, name `WMATA_KEY`.
 
 Verify the proxy by opening `https://<your-site>/api/trains?station=C09` — you should see
 JSON with a `Trains` array. If you see an `error` field instead, it says what WMATA
@@ -252,8 +252,7 @@ minute after your locked train arrives.
 | File | Purpose |
 |---|---|
 | `index.html` | The entire widget — UI, alert logic, audio, no dependencies |
-| `worker.js` | Worker entry point: WMATA proxy and traffic endpoints |
-| `traffic.js` | HERE routing and incidents |
+| `worker.js` | Worker entry point: WMATA proxy (`/api/trains`, `/api/schedule`) |
 | `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
 | `manifest.webmanifest` | Makes it installable as a taskbar app |
 | `sw.js` | Service worker; required for installability, never caches train data |
@@ -277,79 +276,3 @@ Add any new `from` code to the `ALLOWED` set in `worker.js` as well, or the prox
 reject it. Destination codes don't need to be listed — only origins are queried.
 
 Full code list: `https://api.wmata.com/Rail.svc/json/jStations?api_key=YOUR_KEY`
-
-
----
-
-## Traffic — the drive to the Pentagon
-
-`drive.html` is a separate page for the Lorton → Pentagon commute. It shares the same
-Worker but stands alone, so it can be installed on a different phone without carrying the
-train widget along.
-
-### This one needs a key
-
-WMATA publishes open data because it is a public agency. Live traffic is
-commercially owned, so this part needs a key.
-
-1. Sign up at <https://developer.here.com/>
-2. Create a project, generate a **REST API key**.
-3. Cloudflare → your Worker → Settings → Variables and Secrets → add secret `HERE_KEY`.
-
-Until that's set the page says so plainly rather than showing a blank screen. At a
-3-minute auto-refresh over a one-hour window that's about 20 calls a morning.
-
-### Why the request is tiered
-
-HERE Routing v8 rejects the **entire** request with a 400 if any single `spans` attribute
-isn't recognised, so one wrong attribute name costs you the whole feature. The request is
-therefore attempted richest-first and steps down a tier at a time:
-
-| Tier | Requests | Costs you |
-|---|---|---|
-| `full` | names, duration, baseDuration, typicalDuration | — |
-| `no-typical` | drops typicalDuration | historic baseline |
-| `names-only` | drops baseDuration | named slow stretches |
-| `incidents-only` | no spans | slow stretches entirely |
-| `summary-only` | no incidents | everything but the travel time |
-
-The header shows the tier in brackets when it isn't `full`, so degraded data is never
-mistaken for complete data.
-
-### When it fails
-
-The page prints HERE's own error text and every tier attempted, because HERE's 400s name
-the offending parameter. For the raw exchange — URLs sent with the key redacted, statuses,
-and full response bodies:
-
-```
-/api/traffic/debug
-```
-
-### What it shows
-
-- **Door to door minutes**, compared against *typical* conditions for that time of day
-  rather than free-flow. Free-flow is a 3 a.m. number and would call every commute a
-  disaster.
-- **Where it's slow**, by road name with a severity bar. Consecutive slow stretches on the
-  same road are merged, so one jam reads as one line.
-- **Route options**: the fastest route now, the best toll-free route, and an alternate.
-  Around here the fastest usually means the 95 Express Lanes, so the toll-free row is
-  effectively "what the toll is buying you this morning" — the actual decision at Exit 163.
-  With HOV-3+ and an E-ZPass Flex the Express Lanes are free, which makes that comparison
-  a time saving rather than a purchase.
-- **Incidents on her route** — taken from the route's own incident spans, so a crash on a
-  parallel road never appears.
-- **Leave-by time**, if an arrive-by time is set in ⚙.
-
-### Setting the start point
-
-The default is the I-95 / Lorton Road interchange at Exit 163, which is a landmark rather
-than a driveway. For a real door-to-door number, put her actual start point in ⚙: in
-Google Maps, right-click the spot and click the coordinates to copy them, then paste.
-
-### Install it on her phone
-
-Same as the train widget — open the page, then Add to Home Screen (iOS) or Install app
-(Android). It keeps its own settings, so her start point and arrive-by time don't affect
-your widget.
