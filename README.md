@@ -200,9 +200,6 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
   for notification permission and hides the button. The red screen flash works without it.
 - It tracks trains whenever it's open — mornings show **AM**, afternoons and evenings show
   **PM**. Close it when you don't need it.
-- **Demo** fakes a train feed so you can watch the whole alert sequence without waiting for a
-  real train. Turn it off before you rely on it.
-- **Test alert** fires the chime and notification once.
 - `Esc` dismisses an active alert.
 
 ### Call volume

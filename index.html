@@ -164,8 +164,6 @@
       <button id="legAm" aria-pressed="false">AM</button>
       <button id="legPm" aria-pressed="false">PM</button>
     </div>
-    <button class="quiet" id="testBtn">Test</button>
-    <button class="quiet" id="demoBtn">Demo</button>
     <div class="spacer"></div>
     <span class="clock" id="clock">--:--</span>
     <button class="quiet" id="gearBtn" aria-label="Settings">⚙</button>
@@ -244,7 +242,7 @@ const API = "/api/trains";
 const API_SCHED = "/api/schedule";
 
 const S = {
-  running:false, demo:false, trains:[], lastFetch:0, feedOk:null,
+  running:false, trains:[], lastFetch:0, feedOk:null,
   errCount:0, nextTry:0, rateLimited:false, errHint:"",
   sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedNoKey:false,
   lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
@@ -332,7 +330,7 @@ function setLeg(id){
   S.legId = id;
   S.trains = []; S.sched = []; S.schedAt = 0; S.lockEpoch = null;
   S.headsFired = S.goFired = false; S.goUntil = 0;
-  S.lastFetch = 0; demoSeed = null;
+  S.lastFetch = 0;
   app.classList.remove("heads","go");
 }
 
@@ -352,7 +350,6 @@ function parseMin(v){
 async function fetchTrains(){
   const now = Date.now();
   const leg = L();
-  if(S.demo){ S.trains = demoTrains(now, leg); S.feedOk = true; S.lastFetch = now; S.errCount = 0; return; }
   try{
     const r = await fetch(API + "?station=" + leg.from, {cache:"no-store"});
     if(r.status === 429 || r.status === 403){ S.rateLimited = true; throw new Error("rate limited"); }
@@ -380,7 +377,7 @@ async function fetchTrains(){
   }catch(e){
     S.feedOk = false; S.errCount++;
     S.errHint = (location.protocol === "file:")
-      ? "Running from a local file, so there's no /api/trains to call. Deploy it, or use Demo."
+      ? "Running from a local file, so there's no /api/trains to call. Open the deployed site instead."
       : e.message;
     S.nextTry = now + Math.min(CFG.poll*1000 * Math.pow(2, S.errCount), 300000);
   }
@@ -392,7 +389,6 @@ async function fetchTrains(){
 // marked, because a timetable entry is not a sighting.
 async function fetchSchedule(){
   const leg = L();
-  if(S.demo){ S.sched = []; S.schedAt = Date.now(); return; }
   try{
     const r = await fetch(API_SCHED + "?station=" + leg.from + "&line=" + encodeURIComponent(leg.line) +
       "&headsign=" + encodeURIComponent(leg.headsign) + "&horizon=" + CFG.lookAhead, {cache:"no-store"});
@@ -415,20 +411,6 @@ function relevant(){
   return blue.filter(t => t.destCode !== opposite);
 }
 
-let demoSeed=null;
-function demoTrains(now, leg){
-  if(!demoSeed || demoSeed.filter(t=>t-now>0).length < 2){
-    const keep = (demoSeed||[]).filter(t=>t-now>0);
-    demoSeed = keep.slice();
-    let t = keep.length ? keep[keep.length-1] : now + (2+Math.random()*3)*60000;
-    while(demoSeed.length<5){ demoSeed.push(t); t += (4+Math.random()*4)*60000; }
-    demoSeed.sort((a,b)=>a-b);
-  }
-  return demoSeed.filter(t=>t-now>-30000).map(t=>({
-    line:leg.line, car:"8", dest:leg.toName, destCode:leg.toCode, group:"1",
-    min:(t-now)/60000, epoch:t
-  })).sort((a,b)=>a.epoch-b.epoch);
-}
 
 /* ---------- target lock ---------- */
 function pickTarget(){
@@ -496,7 +478,7 @@ function render(){
     $("rows").innerHTML=""; $("empty").style.display="";
     $("empty").innerHTML = S.feedOk===false
       ? (S.rateLimited
-          ? "Shared demo key is rate limited right now. Retrying shortly."
+          ? "WMATA rate limit hit. Retrying shortly."
           : "No feed. " + (S.errHint || "Check the network. Retrying on its own."))
       : "No " + leg.line + " trains to " + leg.toName + " reported right now.";
   } else {
@@ -528,8 +510,7 @@ function render(){
   if(S.feedOk===false) feedNote = S.rateLimited ? "rate limited, retrying" : "feed down, retrying";
   else if(ageSec > 120) feedNote = "last data " + Math.round(ageSec/60) + " min old";
   else feedNote = "updated " + fmtClock(new Date(S.lastFetch));
-  const mode = S.demo ? "Demo" : "Live";
-  $("statusline").textContent = mode + " · " + feedNote;
+  $("statusline").textContent = "Live · " + feedNote;
 
   if(!target){
     $("count").textContent="—"; $("countunit").textContent="";
@@ -633,19 +614,6 @@ function chooseLeg(v){
 }
 $("legAm").onclick   = ()=> chooseLeg("am");
 $("legPm").onclick   = ()=> chooseLeg("pm");
-
-$("demoBtn").onclick = ()=>{
-  S.demo = !S.demo; demoSeed=null; S.lockEpoch=null;
-  S.headsFired=S.goFired=false; S.goUntil=0; S.lastFetch=0; S.errCount=0;
-  $("demoBtn").style.color = S.demo ? "#FFB000" : "";
-  render(); fetchTrains().then(render);
-};
-$("testBtn").onclick = ()=>{
-  chime("go");
-  notify("Leave now — test","This is what the real alert looks like.");
-  app.classList.add("go");
-  setTimeout(()=>{ if(!S.goFired) app.classList.remove("go"); }, 4000);
-};
 
 function fillGear(){
   for(const id of ["am","pm"]){
