@@ -259,10 +259,27 @@ minute after your locked train arrives.
 |---|---|
 | `index.html` | The entire widget — UI, alert logic, audio, no dependencies |
 | `worker.js` | Worker entry point: WMATA proxy (`/api/trains`, `/api/schedule`) |
+| `tests/` | Automated tests (`node --test`) |
 | `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
 | `manifest.webmanifest` | Makes it installable as a taskbar app |
 | `sw.js` | Service worker; required for installability, never caches train data |
 | `icon-192.png`, `icon-512.png` | App icons |
+
+## Tests
+
+```
+node --test
+```
+
+Runs everything in `tests/` with Node's built-in test runner (Node 22 or newer, nothing
+to install). They exercise the Worker and the timetable code against a fake WMATA and a
+small WMATA-shaped GTFS file built on the fly: every route answers with and without a key,
+WMATA failures are explained, the board's "Downtown Largo" and "BL" match the feed's
+"Largo" and "B", the timetable is fetched past Cloudflare's shared cache and stored per key.
+
+GitHub runs the same command on every pull request and push to `main`
+(`.github/workflows/test.yml`), alongside Cloudflare's build check. The board's own page
+logic (AM/PM switching, alerts) isn't covered — that needs a browser.
 
 ## Changing stations
 
