@@ -23,11 +23,25 @@ lighter now and the dimmed rows are a legible muted amber.
 
 ### How far ahead it shows
 
-⚙ has a look-ahead window, default 60 minutes. WMATA's API only predicts trains it is
-actively tracking, though — it isn't a timetable lookup — so their horizon is usually the
-real limit. When their furthest prediction falls short of your window, the METRO strip says
-so ("WMATA predicting 27 min out") rather than leaving you wondering whether the board is
-broken.
+⚙ has a look-ahead window, default 60 minutes. WMATA's real-time API only predicts trains
+it is actively tracking — usually 15–20 minutes out — so on its own it can't fill an
+hour. Past that point the board fills in from WMATA's published timetable (`schedule.js`,
+served at `/api/schedule`):
+
+- Live predictions come first. Timetable trains are only added after the last live
+  train, and never within a couple of minutes of one, so the same train doesn't show twice.
+- Timetable rows are tagged **SCH** in the car column and drawn in a softer amber.
+- Alerts only follow live trains. A timetable time is fine for planning, but the
+  countdown, chime and Go flash wait until WMATA is actually tracking the train.
+
+The METRO strip says what you're looking at: "live to 18 min, then timetable" when the
+timetable is filling in, or "WMATA predicting 27 min out" when there's no timetable data
+and live coverage stops short of your window.
+
+The timetable usually needs your own WMATA key — the shared demo key generally can't
+download it. On the demo key the strip says "own WMATA key needed for timetable" and the
+board shows live predictions only. The Worker caches the timetable for 12 hours;
+`/api/schedule/debug?station=C09` shows what it parsed.
 
 Outside both windows it sits quiet and tells you when the next one opens. Each leg has its
 own walk time and buffer, since the walk from your desk isn't the walk from your car.
@@ -54,6 +68,11 @@ Know what you're running on, though:
 The widget is built to survive all three: it polls slowly when your train is far off,
 backs off exponentially on errors, and keeps counting down from the last known arrival
 times rather than going blank. But a rotated key at 4:15 PM still means no board.
+
+The demo key also usually can't download WMATA's timetable, so on it the board only shows
+live predictions — about 15–20 minutes out rather than your full look-ahead window. The
+METRO strip says "own WMATA key needed for timetable" when that's what's happening. See
+[How far ahead it shows](#how-far-ahead-it-shows).
 
 If you get your own key later it takes two minutes and none of this applies:
 
@@ -182,6 +201,7 @@ minute after your locked train arrives.
 | `index.html` | The entire widget — UI, alert logic, audio, no dependencies |
 | `worker.js` | Worker entry point: WMATA proxy and traffic endpoints |
 | `traffic.js` | HERE routing and incidents |
+| `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
 | `manifest.webmanifest` | Makes it installable as a taskbar app |
 | `sw.js` | Service worker; required for installability, never caches train data |
 | `icon-192.png`, `icon-512.png` | App icons |
