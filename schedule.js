@@ -304,7 +304,10 @@ export async function scheduledDepartures({ env, station, line, headsign,
   const wantLine = norm(line), wantHead = norm(headsign);
   const out = [];
 
-  for (const shift of [0, 1]) {          // today, plus tomorrow near midnight
+  // GTFS times run past 24:00 for late trains (24:30 is 00:30 the next
+  // morning, on the previous day's service), so look at yesterday's service
+  // as well as today's and, near midnight, tomorrow's.
+  for (const shift of [-1, 0, 1]) {
     const parts = tzParts(now + shift * 86400000);
     const active = servicesOn(sched, parts);
     if (!active.size) continue;
@@ -327,7 +330,6 @@ export async function scheduledDepartures({ env, station, line, headsign,
       if (epoch > now + horizonMin * 60000) continue;
       out.push({ epoch, trip: row.trip, line: t.route, headsign: t.headsign });
     }
-    if (out.length >= limit) break;
   }
 
   out.sort((a, b) => a.epoch - b.epoch);

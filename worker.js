@@ -20,8 +20,12 @@ export default {
       return schedule(url, env);
     }
     if (url.pathname === "/api/schedule/debug") {
+      // Same station check as the other routes: every new station code means
+      // a full GTFS download and a KV write, so only the known ones are allowed.
+      const station = (url.searchParams.get("station") || "C09").toUpperCase();
+      if (!ALLOWED.has(station)) return json({ error: "station not allowed" }, 400);
       if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
-      try { return json(await scheduleDiagnose(env, url.searchParams.get("station") || "C09"), 200); }
+      try { return json(await scheduleDiagnose(env, station), 200); }
       catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200); }
     }
     // Not an API route — let the static assets handle it.

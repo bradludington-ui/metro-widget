@@ -234,6 +234,16 @@ function loadCfg(){
     CFG.am = Object.assign({}, DEFAULTS.am, saved.am);
     CFG.pm = Object.assign({}, DEFAULTS.pm, saved.pm);
   }catch(e){}
+  // Same limits as the settings form, in case an older version saved
+  // something out of range.
+  const fit = (v, lo, hi, d) => { const n = Number(v); return isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
+  for(const id of ["am","pm"]){
+    CFG[id].walk = fit(CFG[id].walk, 0, 60, DEFAULTS[id].walk);
+    CFG[id].buffer = fit(CFG[id].buffer, 0, 20, DEFAULTS[id].buffer);
+  }
+  CFG.vol = fit(CFG.vol, 0, 100, DEFAULTS.vol);
+  CFG.poll = fit(CFG.poll, 10, 120, DEFAULTS.poll);
+  CFG.lookAhead = fit(CFG.lookAhead, 10, 120, DEFAULTS.lookAhead);
 }
 function saveCfg(){ try{ localStorage.setItem(KEY, JSON.stringify(CFG)); }catch(e){} }
 loadCfg();
@@ -249,7 +259,8 @@ const S = {
   wake:null,          // WakeLockSentinel, when the screen is being held on
   override:null,      // "am" / "pm" after a tap, until the next noon or midnight
   overrideHalf:"",
-  legId:null          // leg currently displayed
+  legId:null,         // leg currently displayed
+  legGen:0            // bumped on every leg change; replies for an older leg are dropped
 };
 const $ = id => document.getElementById(id);
 const app = $("app");
@@ -275,12 +286,25 @@ function chime(kind){
     else { for(let i=0;i<3;i++){ tone(1046,i*.42,.22,v); tone(784,i*.42+.13,.28,v*.85); } }
   }catch(e){}
 }
+// Chrome on Android refuses `new Notification()` from a page; notifications
+// there must come from the service worker. Use it whenever it's available
+// and fall back to the page constructor (desktop) only without one.
 function notify(title,body){
   if(!CFG.notif) return;
   try{
     if(!("Notification" in window)) return;
-    if(Notification.permission==="granted"){ new Notification(title,{body,tag:"metro-go",renotify:true}); }
-    else if(Notification.permission!=="denied"){ Notification.requestPermission(); }
+    if(Notification.permission!=="granted"){
+      if(Notification.permission!=="denied") Notification.requestPermission();
+      return;
+    }
+    const opts = {body, tag:"metro-go", renotify:true, icon:"icon-192.png"};
+    if(navigator.serviceWorker && navigator.serviceWorker.controller){
+      navigator.serviceWorker.ready
+        .then(reg => reg.showNotification(title, opts))
+        .catch(() => { try{ new Notification(title, opts); }catch(e){} });
+    } else {
+      new Notification(title, opts);
+    }
   }catch(e){}
 }
 
@@ -333,7 +357,7 @@ function L(){ return LEGS[S.legId || halfOf(new Date())]; }
 
 function setLeg(id){
   if(S.legId === id) return;
-  S.legId = id;
+  S.legId = id; S.legGen++;
   S.trains = []; S.sched = []; S.schedAt = 0; S.lockEpoch = null;
   S.headsFired = S.goFired = false; S.goUntil = 0;
   S.lastFetch = 0;
@@ -355,9 +379,13 @@ function parseMin(v){
 
 async function fetchTrains(){
   const now = Date.now();
-  const leg = L();
+  const leg = L(), gen = S.legGen;
+  // A reply that lands after AM/PM has switched belongs to the other
+  // direction's station; drop it rather than show it.
+  const stale = () => gen !== S.legGen;
   try{
     const r = await fetch(API + "?station=" + leg.from, {cache:"no-store"});
+    if(stale()) return;
     if(r.status === 429 || r.status === 403){ S.rateLimited = true; throw new Error("rate limited"); }
     if(r.status === 404){
       throw new Error("404 — /api/trains isn't deployed. The worker script or wrangler config is missing from the repo.");
@@ -370,6 +398,7 @@ async function fetchTrains(){
       throw new Error(why || ("HTTP " + r.status + " from the proxy"));
     }
     const j = await r.json();
+    if(stale()) return;
     if(j.error) throw new Error("WMATA said: " + j.error);
     S.trains = (j.Trains||[])
       .map(t=>({ line:t.Line, car:t.Car, dest:t.DestinationName||t.Destination,
@@ -381,6 +410,7 @@ async function fetchTrains(){
       .sort((a,b)=>a.epoch-b.epoch);
     S.feedOk = true; S.errCount = 0; S.rateLimited = false;
   }catch(e){
+    if(stale()) return;
     S.feedOk = false; S.errCount++;
     S.errHint = (location.protocol === "file:")
       ? "Running from a local file, so there's no /api/trains to call. Open the deployed site instead."
@@ -394,15 +424,17 @@ async function fetchTrains(){
 // back to the published timetable so the board can reach an hour — clearly
 // marked, because a timetable entry is not a sighting.
 async function fetchSchedule(){
-  const leg = L();
+  const leg = L(), gen = S.legGen;
+  S.schedAt = Date.now();          // one request at a time, not one per second while it loads
   try{
     const r = await fetch(API_SCHED + "?station=" + leg.from + "&line=" + encodeURIComponent(leg.line) +
       "&headsign=" + encodeURIComponent(leg.headsign) + "&horizon=" + CFG.lookAhead, {cache:"no-store"});
     const j = await r.json();
+    if(gen !== S.legGen) return;     // the other direction's timetable — drop it
     if(j.error){ S.schedErr = j.error; S.schedNeedsKey = !!j.needsOwnKey;
                  S.schedNoKey = !!j.noKey; S.sched = []; }
     else { S.sched = j.departures || []; S.schedErr = ""; S.schedNeedsKey = S.schedNoKey = false; }
-  }catch(e){ S.schedErr = e.message; S.sched = []; }
+  }catch(e){ if(gen !== S.legGen) return; S.schedErr = e.message; S.sched = []; }
   S.schedAt = Date.now();
 }
 
@@ -430,8 +462,19 @@ function pickTarget(){
     let best=null, bd=Infinity;
     for(const c of cands){ const d=Math.abs(c.epoch-S.lockEpoch); if(d<bd){bd=d;best=c;} }
     if(best && bd < 150000 && best.epoch - now > -60000){ S.lockEpoch = best.epoch; return best; }
+    // The locked train hasn't arrived yet but its prediction jumped more
+    // than 2.5 minutes later: that's a delay, not a new train. Follow it and
+    // keep the alerts already given, so you aren't told to go twice.
+    if(S.lockEpoch > now){
+      const later = cands.find(c => c.epoch > S.lockEpoch && c.epoch - S.lockEpoch <= 10*60000);
+      if(later){ S.lockEpoch = later.epoch; return later; }
+    }
   }
-  const fresh = cands.find(c => c.epoch - now >= lead) || cands.find(c=>c.epoch-now>0);
+  // The first train you can make with your buffer; failing that, one you can
+  // still make if you skip the buffer. A train you can't reach even by
+  // leaving now is never a target, so it never sets off the Go alert.
+  const walkMs = CFG[L().id].walk * 60000;
+  const fresh = cands.find(c => c.epoch - now >= lead) || cands.find(c => c.epoch - now >= walkMs);
   if(!fresh){ S.lockEpoch=null; return null; }
   S.lockEpoch = fresh.epoch;
   S.headsFired=false; S.goFired=false;
@@ -439,6 +482,10 @@ function pickTarget(){
 }
 
 /* ---------- render ---------- */
+// Train and timetable text comes from WMATA; escape it before it goes into
+// the page.
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function fmtClock(d){ return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
 function pad2(n){ return (n<10?"0":"")+n; }
 function fmtShort(d){
@@ -496,9 +543,9 @@ function render(){
       const mm = out < 1 ? (out < 0.3 ? "BRD" : "ARR") : String(Math.floor(out));
       return '<div class="row ' + (leaveIn<0?"past":"") + ' ' + (isT?"target":"") +
         (t.scheduled?" sched":"") + '">' +
-        '<span class="ln">' + t.line + '</span>' +
-        '<span>' + (t.scheduled ? '<b class="stag">SCH</b>' : (t.car||"—")) + '</span>' +
-        '<span class="dest">' + t.dest + '</span><span class="min">' + mm + '</span></div>';
+        '<span class="ln">' + esc(t.line) + '</span>' +
+        '<span>' + (t.scheduled ? '<b class="stag">SCH</b>' : esc(t.car||"—")) + '</span>' +
+        '<span class="dest">' + esc(t.dest) + '</span><span class="min">' + mm + '</span></div>';
     }).join("");
   }
 
@@ -600,6 +647,7 @@ setInterval(async ()=>{
 // then an "Enable sound" button shows that alerts will be silent.
 function startBoard(){
   S.running = true;
+  setLeg(activeLegId(new Date()));   // settle AM/PM first, so the first replies aren't dropped as stale
   S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
   try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
   holdScreen();
@@ -648,14 +696,24 @@ function fillGear(){
   $("awake").disabled = !("wakeLock" in navigator);
 }
 $("gearBtn").onclick=()=>{ fillGear(); $("settings").classList.add("open"); };
+// A number field, kept within its range. A blank or unreadable entry keeps
+// the current value instead of silently becoming 0.
+function num(id, lo, hi, current){
+  const raw = $(id).value.trim();
+  const n = Math.round(Number(raw));
+  if(raw === "" || !isFinite(n)) return current;
+  return Math.min(hi, Math.max(lo, n));
+}
 $("closeGear").onclick=()=>{
   for(const id of ["am","pm"]){
-    CFG[id].walk=+$(id+"_walk").value||0; CFG[id].buffer=+$(id+"_buffer").value||0;
+    CFG[id].walk   = num(id+"_walk",   0, 60, CFG[id].walk);
+    CFG[id].buffer = num(id+"_buffer", 0, 20, CFG[id].buffer);
   }
-  CFG.snd=$("snd").checked; CFG.vol=+$("vol").value; CFG.notif=$("notif").checked;
-  CFG.poll=Math.max(10,+$("poll").value||20);
+  CFG.snd=$("snd").checked; CFG.notif=$("notif").checked;
+  CFG.vol = num("vol", 0, 100, CFG.vol);
+  CFG.poll = num("poll", 10, 120, CFG.poll);
   CFG.keepAwake=$("awake").checked;
-  CFG.lookAhead=Math.max(10,+$("look").value||60);
+  CFG.lookAhead = num("look", 10, 120, CFG.lookAhead);
   CFG.textSize=+$("tsize").value||1; applyScale();
   if(CFG.keepAwake) holdScreen(); else dropScreen();
   paintSound();

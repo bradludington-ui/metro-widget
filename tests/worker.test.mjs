@@ -90,3 +90,15 @@ test("routes that were removed fall through to the static files", async t => {
     assert.equal(r.body, "asset:" + path);
   }
 });
+
+test("schedule debug: only known stations, so made-up codes can't trigger downloads", async t => {
+  const calls = mockFetch(t, () => new Response(railGtfs()));
+  for (const st of ["X1", "zz", "_", "A01"]) {
+    const r = await call("/api/schedule/debug?station=" + st, { WMATA_KEY: "k" });
+    assert.equal(r.status, 400, st);
+  }
+  assert.equal(calls.length, 0);
+  const ok = await call("/api/schedule/debug?station=j03", { WMATA_KEY: "k-debug" });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.rowsForStation, 5);
+});
