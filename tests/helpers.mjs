@@ -56,8 +56,9 @@ export function gtfsTimeIn(minutes) {
 
 // A WMATA-shaped rail GTFS feed for Franconia-Springfield (J03): quoted
 // fields, a "B" short name for the Blue Line, a Red Line trip, and both
-// directions. Trip ids say what each one is.
-export function railGtfs() {
+// directions. Trip ids say what each one is. `extra` adds more trips:
+// [{ trip, route, headsign, time }], with `time` a GTFS time string.
+export function railGtfs(extra = []) {
   const t = gtfsTimeIn;
   return makeZip({
     "routes.txt":
@@ -68,14 +69,16 @@ export function railGtfs() {
       '"BLUE","ALL","BL_FRANCONIA_30","Franconia-Springfield"\r\n' +
       '"BLUE","ALL","BL_LARGO_40","Largo"\r\n' +
       '"RED","ALL","RD_LARGO_35","Largo"\r\n' +
-      '"BLUE","ALL","BL_LARGO_200","Largo"\r\n',
+      '"BLUE","ALL","BL_LARGO_200","Largo"\r\n' +
+      extra.map(x => `"${x.route}","ALL","${x.trip}","${x.headsign}"\r\n`).join(""),
     "stop_times.txt":
       'trip_id,arrival_time,departure_time,stop_id,stop_sequence\r\n' +
       `"BL_LARGO_25","${t(25)}","${t(25)}","PF_J03_C","1"\r\n` +
       `"BL_FRANCONIA_30","${t(30)}","${t(30)}","PF_J03_C","20"\r\n` +
       `"BL_LARGO_40","${t(40)}","${t(40)}","PF_J03_C","1"\r\n` +
       `"RD_LARGO_35","${t(35)}","${t(35)}","PF_J03_C","1"\r\n` +
-      `"BL_LARGO_200","${t(200)}","${t(200)}","PF_J03_C","1"\r\n`,
+      `"BL_LARGO_200","${t(200)}","${t(200)}","PF_J03_C","1"\r\n` +
+      extra.map(x => `"${x.trip}","${x.time}","${x.time}","PF_J03_C","1"\r\n`).join(""),
     "calendar.txt":
       'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\r\n' +
       '"ALL","1","1","1","1","1","1","1","20000101","20991231"\r\n',

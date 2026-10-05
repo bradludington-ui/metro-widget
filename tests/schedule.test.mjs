@@ -2,7 +2,7 @@
 // wording, caching, and how refusals are reported.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { railGtfs, fakeKV, mockFetch, fresh } from "./helpers.mjs";
+import { railGtfs, fakeKV, mockFetch, fresh, gtfsTimeIn } from "./helpers.mjs";
 
 const AM = { station: "J03", line: "BL", headsign: "Downtown Largo", horizonMin: 60 };
 const PM_DIR = { station: "J03", line: "BL", headsign: "Franconia-Springfield", horizonMin: 60 };
@@ -94,4 +94,13 @@ test("diagnostics report where the timetable came from", async t => {
   assert.equal(d.source, "wmata");
   assert.equal(d.rowsForStation, 5);
   assert.equal(d.headsignsSeen["B → Largo"], 3);
+});
+
+test("after midnight: late trains listed on the previous day's service (24:xx) are included", async t => {
+  // 24h + 10 min on yesterday's service day is 10 minutes from now.
+  const late = { trip: "BL_LARGO_LATE", route: "BLUE", headsign: "Largo", time: gtfsTimeIn(24 * 60 + 10) };
+  mockFetch(t, () => new Response(railGtfs([late])));
+  const { scheduledDepartures } = await fresh("../schedule.js");
+  const r = await scheduledDepartures({ env: { WMATA_KEY: "k" }, ...AM });
+  assert.deepEqual(trips(r), ["BL_LARGO_LATE", "BL_LARGO_25", "BL_LARGO_40"]);
 });

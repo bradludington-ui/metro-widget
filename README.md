@@ -200,6 +200,13 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
   for notification permission and hides the button. The red screen flash works without it.
 - It tracks trains whenever it's open — mornings show **AM**, afternoons and evenings show
   **PM**. Close it when you don't need it.
+- **On a phone, keep the board on screen when you're relying on it.** Once the screen
+  turns off, phone browsers suspend web pages, so the chime and notification can't fire
+  until you open it again. "Keep screen awake" in ⚙ holds the screen on while the board is
+  open. On a desktop the alerts still fire when the window is covered by others.
+- The countdown only ever targets a train you can still make. If the next train leaves
+  before you could reach the platform, it's shown dimmed and the board says "Nothing
+  catchable" rather than telling you to run for it.
 - `Esc` dismisses an active alert.
 
 ### Call volume
