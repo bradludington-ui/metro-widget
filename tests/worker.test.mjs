@@ -52,7 +52,9 @@ test("trains: passes WMATA's predictions through", async t => {
 
 test("trains: stations outside the allowed list are refused", async t => {
   const calls = mockFetch(t, () => new Response("{}"));
-  assert.equal((await call("/api/trains?station=A01", { WMATA_KEY: "k" })).status, 400);
+  // Only the board's two stations; the others it once allowed are refused too.
+  for (const st of ["A01", "G05", "C08", "C13", "C07"])
+    assert.equal((await call("/api/trains?station=" + st, { WMATA_KEY: "k" })).status, 400, st);
   assert.equal(calls.length, 0);
 });
 

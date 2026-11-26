@@ -7,7 +7,9 @@ import { scheduledDepartures, scheduleDiagnose } from "./schedule.js";
 // secret there is nothing to call with. Say so plainly.
 const NO_KEY = "No WMATA key set. Add your key as the WMATA_KEY secret in " +
   "Cloudflare (Workers & Pages → metro-widget → Settings → Variables and Secrets).";
-const ALLOWED = new Set(["C09", "J03", "G05", "C08", "C13", "C07"]);
+// The stations the board actually reads from: Franconia-Springfield (AM) and
+// Crystal City (PM). Anything else is refused rather than proxied.
+const ALLOWED = new Set(["J03", "C09"]);
 
 export default {
   async fetch(request, env) {
