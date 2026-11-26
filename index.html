@@ -203,13 +203,13 @@
  * Both ride the Blue Line; they just point in opposite directions.
  * ------------------------------------------------------------------ */
 const LEGS = {
-  am: { id:"am", label:"Morning",
+  am: { id:"am",
         from:"J03", fromName:"Franconia-Spfld",
         toCode:"G05", toName:"Downtown Largo",
         line:"BL", leaveLede:"LEAVE HOME IN", goSub:"Head out now.",
         headsign:"Downtown Largo",
         },
-  pm: { id:"pm", label:"Evening",
+  pm: { id:"pm",
         from:"C09", fromName:"Crystal City",
         toCode:"J03", toName:"Franconia-Spfld",
         line:"BL", leaveLede:"LEAVE DESK IN", goSub:"Shut it down and move.",
@@ -224,26 +224,26 @@ const DEFAULTS = {
 };
 let CFG = JSON.parse(JSON.stringify(DEFAULTS));
 const KEY = "metro-widget-cfg";
+// Only the settings this version knows are read back; anything an older
+// version stored (watch windows, active days, ...) is dropped, and numbers
+// are kept to the same ranges as the settings form.
 function loadCfg(){
-  try{
-    const r = localStorage.getItem(KEY);
-    if(!r) return;
-    const saved = JSON.parse(r);
-    CFG = Object.assign({}, DEFAULTS, saved);
-    delete CFG.showall;              // retired setting; Blue Line only now
-    CFG.am = Object.assign({}, DEFAULTS.am, saved.am);
-    CFG.pm = Object.assign({}, DEFAULTS.pm, saved.pm);
-  }catch(e){}
-  // Same limits as the settings form, in case an older version saved
-  // something out of range.
-  const fit = (v, lo, hi, d) => { const n = Number(v); return isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
+  let saved = {};
+  try{ saved = JSON.parse(localStorage.getItem(KEY)) || {}; }catch(e){}
+  const fit = (v, lo, hi, d) => {
+    const n = Number(v);
+    return v == null || !isFinite(n) ? d : Math.min(hi, Math.max(lo, Math.round(n)));
+  };
   for(const id of ["am","pm"]){
-    CFG[id].walk = fit(CFG[id].walk, 0, 60, DEFAULTS[id].walk);
-    CFG[id].buffer = fit(CFG[id].buffer, 0, 20, DEFAULTS[id].buffer);
+    const leg = saved[id] || {};
+    CFG[id].walk   = fit(leg.walk,   0, 60, DEFAULTS[id].walk);
+    CFG[id].buffer = fit(leg.buffer, 0, 20, DEFAULTS[id].buffer);
   }
-  CFG.vol = fit(CFG.vol, 0, 100, DEFAULTS.vol);
-  CFG.poll = fit(CFG.poll, 10, 120, DEFAULTS.poll);
-  CFG.lookAhead = fit(CFG.lookAhead, 10, 120, DEFAULTS.lookAhead);
+  for(const k of ["snd","notif","keepAwake"]) if(typeof saved[k] === "boolean") CFG[k] = saved[k];
+  CFG.vol       = fit(saved.vol,       0, 100, DEFAULTS.vol);
+  CFG.poll      = fit(saved.poll,     10, 120, DEFAULTS.poll);
+  CFG.lookAhead = fit(saved.lookAhead, 10, 120, DEFAULTS.lookAhead);
+  if([0.9, 1, 1.15, 1.3].includes(saved.textSize)) CFG.textSize = saved.textSize;
 }
 function saveCfg(){ try{ localStorage.setItem(KEY, JSON.stringify(CFG)); }catch(e){} }
 loadCfg();
@@ -252,7 +252,7 @@ const API = "/api/trains";
 const API_SCHED = "/api/schedule";
 
 const S = {
-  running:false, trains:[], lastFetch:0, feedOk:null,
+  trains:[], lastFetch:0, feedOk:null,
   errCount:0, nextTry:0, rateLimited:false, errHint:"",
   sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedNoKey:false,
   lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
@@ -314,7 +314,7 @@ function notify(title,body){
  * so we re-acquire it every time we come back to the foreground.
  * ------------------------------------------------------------------ */
 async function holdScreen(){
-  if(!CFG.keepAwake || !S.running) return;
+  if(!CFG.keepAwake) return;
   if(!("wakeLock" in navigator)) return;
   if(S.wake && !S.wake.released) return;
   try{
@@ -333,7 +333,7 @@ document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState !== "visible") return;
   holdScreen();
   // Catch up on anything missed while polling was paused.
-  if(S.running && Date.now() - S.lastFetch > 15000 && Date.now() >= S.nextTry){
+  if(Date.now() - S.lastFetch > 15000 && Date.now() >= S.nextTry){
     if(Date.now() - S.schedAt > 600000) fetchSchedule();
     fetchTrains().then(render);
   }
@@ -386,7 +386,7 @@ async function fetchTrains(){
   try{
     const r = await fetch(API + "?station=" + leg.from, {cache:"no-store"});
     if(stale()) return;
-    if(r.status === 429 || r.status === 403){ S.rateLimited = true; throw new Error("rate limited"); }
+    if(r.status === 429){ S.rateLimited = true; throw new Error("rate limited"); }
     if(r.status === 404){
       throw new Error("404 — /api/trains isn't deployed. The worker script or wrangler config is missing from the repo.");
     }
@@ -399,10 +399,9 @@ async function fetchTrains(){
     }
     const j = await r.json();
     if(stale()) return;
-    if(j.error) throw new Error("WMATA said: " + j.error);
     S.trains = (j.Trains||[])
       .map(t=>({ line:t.Line, car:t.Car, dest:t.DestinationName||t.Destination,
-                 destCode:t.DestinationCode, group:t.Group, min:parseMin(t.Min) }))
+                 destCode:t.DestinationCode, min:parseMin(t.Min) }))
       .filter(t=>t.min!==null)
       // Pin each train to a wall-clock arrival when we hear about it, so the
       // board keeps counting down honestly if the feed goes dark.
@@ -488,26 +487,22 @@ const esc = t => String(t ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function fmtClock(d){ return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
 function pad2(n){ return (n<10?"0":"")+n; }
-function fmtShort(d){
-  return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})
-          .replace(/\s*AM$/i,"a").replace(/\s*PM$/i,"p");
-}
+
+// The board renders every second, but rows only change when a minute ticks
+// over or new data arrives; skip rebuilding them when nothing changed.
+let rowsHtml = null;
+function setRows(html){ if(html !== rowsHtml){ $("rows").innerHTML = html; rowsHtml = html; } }
 
 function render(){
   const now = new Date();
   $("clock").textContent = fmtClock(now);
-  $("dot").className = "dot" + (S.running ? (S.feedOk===false ? " err" : " on") : "");
+  $("dot").className = "dot" + (S.feedOk===false ? " err" : " on");
 
   setLeg(activeLegId(now));
   paintLegPick();
   const leg = L();
   $("route").innerHTML = leg.fromName + ' <i>→</i> ' + leg.toName;
   $("lede").textContent = leg.leaveLede;
-
-  if(!S.running){
-    $("statusline").textContent = "Standby";
-    return;
-  }
 
   // Everything inside the look-ahead window. WMATA only predicts trains it
   // is actively tracking, so this is usually the real constraint, not us.
@@ -528,7 +523,7 @@ function render(){
   const walk = CFG[leg.id].walk, buf = CFG[leg.id].buffer;
 
   if(!list.length){
-    $("rows").innerHTML=""; $("empty").style.display="";
+    setRows(""); $("empty").style.display="";
     $("empty").innerHTML = S.feedOk===false
       ? (S.rateLimited
           ? "WMATA rate limit hit. Retrying shortly."
@@ -536,7 +531,7 @@ function render(){
       : "No " + leg.line + " trains to " + leg.toName + " reported right now.";
   } else {
     $("empty").style.display="none";
-    $("rows").innerHTML = list.map(t=>{
+    setRows(list.map(t=>{
       const out = (t.epoch - Date.now())/60000;
       const leaveIn = out - walk - buf;
       const isT = target && Math.abs(t.epoch - S.lockEpoch) < 30000;
@@ -546,7 +541,7 @@ function render(){
         '<span class="ln">' + esc(t.line) + '</span>' +
         '<span>' + (t.scheduled ? '<b class="stag">SCH</b>' : esc(t.car||"—")) + '</span>' +
         '<span class="dest">' + esc(t.dest) + '</span><span class="min">' + mm + '</span></div>';
-    }).join("");
+    }).join(""));
   }
 
   // If WMATA's furthest prediction falls well short of the window, say so —
@@ -634,7 +629,7 @@ function pollInterval(){
 }
 setInterval(render, 1000);
 setInterval(async ()=>{
-  if(!S.running || pausedWhileHidden()) return;
+  if(pausedWhileHidden()) return;
   if(Date.now() - S.schedAt > 600000) fetchSchedule();
   if(Date.now() - S.lastFetch < pollInterval() - 500) return;
   await fetchTrains();
@@ -646,7 +641,6 @@ setInterval(async ()=>{
 // page, so the first tap or keypress anywhere finishes that part. Until
 // then an "Enable sound" button shows that alerts will be silent.
 function startBoard(){
-  S.running = true;
   setLeg(activeLegId(new Date()));   // settle AM/PM first, so the first replies aren't dropped as stale
   S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
   try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}

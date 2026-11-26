@@ -192,7 +192,7 @@ async function buildFromWmata(key, stations) {
   if (!r.ok) throw new Error("GTFS download " + r.status);
 
   const files = await readZip(await r.arrayBuffer(),
-    ["stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar.txt", "calendar_dates.txt"]);
+    ["routes.txt", "trips.txt", "stop_times.txt", "calendar.txt", "calendar_dates.txt"]);
 
   const routeName = {}, routeMatch = {}, routeShort = {};
   for (const x of parseCsv(files["routes.txt"] || "")) {
@@ -237,7 +237,6 @@ async function buildFromWmata(key, stations) {
   const iTrip = head.indexOf("trip_id");
   const iDep = head.indexOf("departure_time");
   const iStop = head.indexOf("stop_id");
-  const iSeq = head.indexOf("stop_sequence");
 
   const byStation = {};
   for (const code of stations) byStation[code] = [];
@@ -254,7 +253,7 @@ async function buildFromWmata(key, stations) {
       if (!c[iStop] || c[iStop].indexOf(code) === -1) break;   // matched elsewhere in the row
       const dep = hmsToSec(c[iDep]);
       if (dep === null) break;
-      byStation[code].push({ trip: c[iTrip], dep, seq: +c[iSeq] });
+      byStation[code].push({ trip: c[iTrip], dep });
       break;
     }
   }
