@@ -1,7 +1,7 @@
 # Next Train — Blue Line commute board
 
-A small desk widget that watches WMATA's real-time Blue Line predictions, shows the next
-train you can still make after your walk, and alerts you when it's time to move.
+A small desk widget that watches WMATA's real-time Blue Line predictions and shows the next
+train, when it gets you to your stop, and the weather for the ride.
 
 It covers both directions of the day, picked by the clock:
 
@@ -16,12 +16,10 @@ back to following the clock, so a board left open all day still flips to PM at n
 
 ### The look
 
-A card at the top shows **your train** — the next one you can still make — in large type,
-with where it's going and how many minutes away it is. It's blue normally, turns amber two
-minutes before you need to leave, red and pulsing when it's time to go, and grey when
-nothing on the board is catchable. Below it, each upcoming train is a row: destination,
-time, minutes away, and a note — **Your train**, **Too soon to make**, **Live** (with the
-number of cars) or **Scheduled**. A chip in the header says whether the feed is Live,
+A card at the top shows **the next train** in large type, with where it's going and how
+many minutes away it is. It's blue, or grey when there are no trains on the board. Below
+it, each upcoming train is a row: destination, time, minutes away, and a note — **Live**
+(with the number of cars) or **Scheduled**; the train on the card is outlined. A chip in the header says whether the feed is Live,
 Stale or down.
 
 Light or dark follows your phone's or computer's own setting. ⚙ has a **Text size**
@@ -54,8 +52,8 @@ served at `/api/schedule`):
 - Live predictions come first. Timetable trains are only added after the last live
   train, and never within a couple of minutes of one, so the same train doesn't show twice.
 - Timetable rows are marked **Scheduled** where live ones say **Live**.
-- Alerts only follow live trains. A timetable time is fine for planning, but "your train",
-  the chime and the Go flash wait until WMATA is actually tracking the train.
+- If the only train left in the window is a timetable one, the card shows it and says
+  "scheduled".
 
 A line above the train list says what you're looking at: "live to 18 min, then timetable" when the
 timetable is filling in, or "WMATA predicting 27 min out" when there's no timetable data
@@ -71,9 +69,6 @@ stations and keeps it for 12 hours — in memory, and in a Workers KV namespace 
 survives restarts (see [Timetable storage](#timetable-storage)). The download happens
 about twice a day. `/api/schedule/debug?station=C09` shows what it parsed and where it came
 from (`"source": "memory"`, `"kv"` or `"wmata"`).
-
-Each direction has its own walk time and buffer in ⚙, since the walk from your door isn't
-the walk from your desk.
 
 ---
 
@@ -213,62 +208,21 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
 
 - It starts on its own. Open the page (or launch the installed app) and it begins watching
   trains — there's no Start button.
-- **Tap once to turn sound on.** Browsers won't play sound or ask for notification
-  permission until you've interacted with the page. Until you do, a **Sound off** button sits
-  in the footer as a reminder; the first tap or keypress anywhere enables the chime, asks
-  for notification permission and hides the button. The red screen flash works without it.
 - It tracks trains whenever it's open — mornings show **AM**, afternoons and evenings show
   **PM**. Close it when you don't need it.
-- **On a phone, keep the board on screen when you're relying on it.** Once the screen
-  turns off, phone browsers suspend web pages, so the chime and notification can't fire
-  until you open it again. "Keep screen awake" in ⚙ holds the screen on while the board is
-  open. On a desktop the alerts still fire when the window is covered by others.
-- The board only ever picks a train you can still make. If the next train leaves before
-  you could reach the platform, it's shown dimmed and the board says "Nothing catchable"
-  rather than telling you to run for it.
-- `Esc` dismisses an active alert.
+- "Keep screen awake" in ⚙ holds a phone's or tablet's screen on while the board is open.
+- There are no alerts or sounds; the board is something to glance at.
 
 ### Call volume
 
-The refresh setting in ⚙ is the *fastest* rate, used only when you need to leave within
-five minutes. Further out it polls at half and then a third of that — about one call a
-minute while your train is still a way off.
+The refresh setting in ⚙ is the *fastest* rate, used while a train is under five minutes
+out. Otherwise it polls at half that.
 
 When the board can't be seen — minimized, in a background tab, or the phone locked — it
-stops calling WMATA altogether, unless you need to leave within 15 minutes; then it keeps
-polling so the heads-up and Go alerts still fire on fresh data. (Windows can count a window
-that's merely covered by others as hidden, which is why the alerts don't simply stop.)
-Bringing it back into view refreshes immediately.
+stops calling WMATA altogether. Bringing it back into view refreshes immediately.
 
 On errors it backs off — 2x, 4x, 8x the base interval, capped at five minutes — and the
 status line tells you whether it's a rate limit or a dead connection.
-
-### Your train and the alerts
-
-The bottom of the board shows **the next train you can make** — its time, how many minutes
-away it is, and where it's going. There's no on-screen countdown. Behind the scenes the
-board still works out when you need to leave:
-
-```
-leave at = train arrival − walk time − safety buffer
-```
-
-and uses that for the alerts. The first train whose leave time hasn't passed is "your
-train"; if only a train you could make by skipping the buffer is left, it picks that one.
-Defaults are a 6-minute walk in the morning and 8 in the evening, each with a 2-minute
-buffer. Change them in ⚙ once you've timed the walks.
-
-Three states:
-
-| State | When | What happens |
-|---|---|---|
-| Tracking | normal | Blue card with your train, quiet |
-| Two minutes | 2 minutes before you need to leave | Card turns amber, "Two minutes — wrap up", single soft chime, notification |
-| Go | time to leave | Card turns red and pulses, "Go now", three-tone chime, notification |
-
-The widget locks onto one train rather than always showing the soonest, so it doesn't
-jump around when WMATA revises its estimates. It rolls to the next train about a minute
-after your locked train arrives.
 
 ---
 
@@ -276,9 +230,6 @@ after your locked train arrives.
 
 - **The proxy may block `*.workers.dev` or `api.wmata.com`.** Test the `/api/trains` URL in a
   browser tab before building any habits around this.
-- **Notifications need permission** and can be disabled by Group Policy. If the toast never
-  appears, the in-window red flash still works — it's the primary signal, not the backup.
-- **Audio** may be muted at the OS level or blocked in the browser's site settings.
 - **Check your IT policy before deploying.** Standing up a personal web app and calling an
   external API from a GFE workstation is the kind of thing that's usually fine and
   occasionally very much not. Worth a quick read of your AUP or a note to your ISSO.
@@ -289,7 +240,7 @@ after your locked train arrives.
 
 | File | Purpose |
 |---|---|
-| `index.html` | The entire widget — UI, alert logic, audio, no dependencies |
+| `index.html` | The entire widget — UI and logic, no dependencies |
 | `worker.js` | Worker entry point: WMATA proxy (`/api/trains`, `/api/schedule`) |
 | `tests/` | Automated tests (`node --test`) |
 | `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
@@ -312,7 +263,7 @@ WMATA failures are explained, the board's "Downtown Largo" and "BL" match the fe
 
 GitHub runs the same command on every pull request and push to `main`
 (`.github/workflows/test.yml`), alongside Cloudflare's build check. The board's own page
-logic (AM/PM switching, alerts) isn't covered — that needs a browser.
+logic (AM/PM switching, rendering) isn't covered — that needs a browser.
 
 ## Changing stations
 

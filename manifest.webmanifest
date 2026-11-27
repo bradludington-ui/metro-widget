@@ -1,7 +1,7 @@
 {
   "name": "Next Train",
   "short_name": "Next Train",
-  "description": "Blue Line departures for the morning and evening commute, with a time-to-leave countdown.",
+  "description": "Blue Line departures for the morning and evening commute, with arrival times and the day's weather.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

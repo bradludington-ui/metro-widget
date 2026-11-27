@@ -12,7 +12,7 @@
   :root{
     --bg:#F2F4F7; --surface:#FFFFFF; --text:#10151C; --muted:#56606D; --line:#E4E8EE;
     --ring:#0B5CAD; --pill:#0076A8; --seg-on:#10151C; --seg-on-text:#FFFFFF;
-    --calm:#0B5CAD; --heads:#B45309; --go:#C0262D; --idle:#4A5463;
+    --calm:#0B5CAD; --idle:#4A5463;
     --ok:#1F9D55; --bad:#C0262D;
     --tscale:1;
     color-scheme:light;
@@ -65,10 +65,6 @@
   .wx .what span{font-size:calc(12.5px * var(--tscale));color:var(--muted)}
   .wx .rain{font-size:calc(13px * var(--tscale));font-weight:700;color:var(--ring);white-space:nowrap}
   #app.idle .hero{background:var(--idle)}
-  #app.heads .hero{background:var(--heads)}
-  #app.go .hero{background:var(--go);animation:beat 1s steps(1,end) infinite}
-  @keyframes beat{0%,49%{box-shadow:0 0 0 4px var(--go)}50%,100%{box-shadow:0 0 0 4px transparent}}
-  @media (prefers-reduced-motion:reduce){#app.go .hero{animation:none;box-shadow:0 0 0 4px var(--go)}}
 
   .list{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;scrollbar-width:thin}
   .listhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 4px}
@@ -86,7 +82,6 @@
   .dest{font-size:calc(15.5px * var(--tscale));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .note{font-size:calc(12.5px * var(--tscale));color:var(--muted)}
   .min{font-size:calc(19px * var(--tscale));font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .row.past .min{color:var(--muted)}
   .empty{padding:14px 4px;color:var(--muted);font-size:calc(14px * var(--tscale));line-height:1.55}
 
   footer{flex:0 0 auto;display:flex;align-items:center;gap:8px}
@@ -125,7 +120,7 @@
   </header>
 
   <section class="hero" aria-label="Your train">
-    <div class="lede" id="lede">NEXT TRAIN YOU CAN MAKE</div>
+    <div class="lede" id="lede">NEXT TRAIN</div>
     <div class="big"><em id="count">—</em><small id="countunit"></small></div>
     <div class="sub" id="sub">Loading trains…</div>
     <div class="arrive" id="arrive"></div>
@@ -145,7 +140,6 @@
   </section>
 
   <footer>
-    <button class="primary" id="soundBtn" hidden title="Browsers keep sound off until you tap the page. Tap to turn alert sound on." aria-label="Enable sound">Sound off</button>
     <div class="legpick" role="group" aria-label="Direction">
       <button id="legAm" aria-pressed="false">AM</button>
       <button id="legPm" aria-pressed="false">PM</button>
@@ -157,21 +151,7 @@
   </footer>
 
   <div id="settings">
-    <h2>Commute settings</h2>
-    <p class="hint">Your train is the first one you can reach after your walk and buffer. You get a chime two minutes before you need to leave, and the full alert when it's time to go.</p>
-
-    <h3>Morning<span>Franconia-Springfield → Downtown Largo</span></h3>
-    <div class="field"><label for="am_walk">Walk to platform (min)</label><input type="number" id="am_walk" min="0" max="60"></div>
-    <div class="field"><label for="am_buffer">Safety buffer (min)</label><input type="number" id="am_buffer" min="0" max="20"></div>
-
-    <h3>Evening<span>Crystal City → Franconia-Springfield</span></h3>
-    <div class="field"><label for="pm_walk">Walk to platform (min)</label><input type="number" id="pm_walk" min="0" max="60"></div>
-    <div class="field"><label for="pm_buffer">Safety buffer (min)</label><input type="number" id="pm_buffer" min="0" max="20"></div>
-
-    <h3>Both<span>Applies to morning and evening</span></h3>
-    <div class="field"><label for="snd">Chime on alert</label><input type="checkbox" id="snd"></div>
-    <div class="field"><label for="vol">Chime volume</label><input type="number" id="vol" min="0" max="100"></div>
-    <div class="field"><label for="notif">System notification</label><input type="checkbox" id="notif"></div>
+    <h2>Settings</h2>
     <div class="field"><label for="awake">Keep screen awake while running</label><input type="checkbox" id="awake"></div>
     <div class="field"><label for="tsize">Text size</label>
       <select id="tsize">
@@ -196,7 +176,7 @@ const LEGS = {
         toCode:"G05", toName:"Downtown Largo",
         route:"Franconia → Largo",
         off:"C09", offName:"Crystal City",
-        line:"BL", goSub:"Head out now.",
+        line:"BL",
         headsign:"Downtown Largo",
         },
   pm: { id:"pm",
@@ -204,20 +184,16 @@ const LEGS = {
         toCode:"J03", toName:"Franconia-Spfld",
         route:"Crystal City → Franconia",
         off:"J03", offName:"Franconia",
-        line:"BL", goSub:"Shut it down and move.",
+        line:"BL",
         headsign:"Franconia-Springfield",
         }
 };
 
-const DEFAULTS = {
-  am:{ walk:6, buffer:2 },
-  pm:{ walk:8, buffer:2 },
-  snd:true, vol:55, notif:true, poll:20, keepAwake:true, lookAhead:60, textSize:1
-};
-let CFG = JSON.parse(JSON.stringify(DEFAULTS));
+const DEFAULTS = { poll:20, keepAwake:true, lookAhead:60, textSize:1 };
+let CFG = { ...DEFAULTS };
 const KEY = "metro-widget-cfg";
 // Only the settings this version knows are read back; anything an older
-// version stored (watch windows, active days, ...) is dropped, and numbers
+// version stored (walk times, alert settings, ...) is dropped, and numbers
 // are kept to the same ranges as the settings form.
 function loadCfg(){
   let saved = {};
@@ -226,13 +202,7 @@ function loadCfg(){
     const n = Number(v);
     return v == null || !isFinite(n) ? d : Math.min(hi, Math.max(lo, Math.round(n)));
   };
-  for(const id of ["am","pm"]){
-    const leg = saved[id] || {};
-    CFG[id].walk   = fit(leg.walk,   0, 60, DEFAULTS[id].walk);
-    CFG[id].buffer = fit(leg.buffer, 0, 20, DEFAULTS[id].buffer);
-  }
-  for(const k of ["snd","notif","keepAwake"]) if(typeof saved[k] === "boolean") CFG[k] = saved[k];
-  CFG.vol       = fit(saved.vol,       0, 100, DEFAULTS.vol);
+  if(typeof saved.keepAwake === "boolean") CFG.keepAwake = saved.keepAwake;
   CFG.poll      = fit(saved.poll,     10, 120, DEFAULTS.poll);
   CFG.lookAhead = fit(saved.lookAhead, 10, 120, DEFAULTS.lookAhead);
   if([0.9, 1, 1.15, 1.3].includes(saved.textSize)) CFG.textSize = saved.textSize;
@@ -247,7 +217,6 @@ const S = {
   trains:[], lastFetch:0, feedOk:null,
   errCount:0, nextTry:0, rateLimited:false, errHint:"",
   sched:[], schedAt:0, schedErr:"", schedNeedsKey:false, schedNoKey:false,
-  lockEpoch:null, headsFired:false, goFired:false, goUntil:0,
   wake:null,          // WakeLockSentinel, when the screen is being held on
   override:null,      // "am" / "pm" after a tap, until the next noon or midnight
   overrideHalf:"",
@@ -260,49 +229,6 @@ const S = {
 };
 const $ = id => document.getElementById(id);
 const app = $("app");
-
-/* ---------- audio ---------- */
-let actx=null;
-function tone(freq,start,dur,gain){
-  const o=actx.createOscillator(), g=actx.createGain();
-  o.type="triangle"; o.frequency.value=freq;
-  g.gain.setValueAtTime(0,actx.currentTime+start);
-  g.gain.linearRampToValueAtTime(gain,actx.currentTime+start+0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+start+dur);
-  o.connect(g); g.connect(actx.destination);
-  o.start(actx.currentTime+start); o.stop(actx.currentTime+start+dur+0.05);
-}
-function chime(kind){
-  if(!CFG.snd) return;
-  try{
-    if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
-    if(actx.state==="suspended") actx.resume();
-    const v = Math.max(0,Math.min(100,CFG.vol))/100 * 0.5;
-    if(kind==="heads"){ tone(784,0,.35,v*.7); tone(1046,.16,.4,v*.55); }
-    else { for(let i=0;i<3;i++){ tone(1046,i*.42,.22,v); tone(784,i*.42+.13,.28,v*.85); } }
-  }catch(e){}
-}
-// Chrome on Android refuses `new Notification()` from a page; notifications
-// there must come from the service worker. Use it whenever it's available
-// and fall back to the page constructor (desktop) only without one.
-function notify(title,body){
-  if(!CFG.notif) return;
-  try{
-    if(!("Notification" in window)) return;
-    if(Notification.permission!=="granted"){
-      if(Notification.permission!=="denied") Notification.requestPermission();
-      return;
-    }
-    const opts = {body, tag:"metro-go", renotify:true, icon:"icon-192.png"};
-    if(navigator.serviceWorker && navigator.serviceWorker.controller){
-      navigator.serviceWorker.ready
-        .then(reg => reg.showNotification(title, opts))
-        .catch(() => { try{ new Notification(title, opts); }catch(e){} });
-    } else {
-      new Notification(title, opts);
-    }
-  }catch(e){}
-}
 
 /* ------------------------------------------------------------------ *
  * Screen wake lock — keeps a phone or tablet from sleeping while the
@@ -354,10 +280,8 @@ function L(){ return LEGS[S.legId || halfOf(new Date())]; }
 function setLeg(id){
   if(S.legId === id) return;
   S.legId = id; S.legGen++;
-  S.trains = []; S.sched = []; S.schedAt = 0; S.lockEpoch = null;
-  S.headsFired = S.goFired = false; S.goUntil = 0;
+  S.trains = []; S.sched = []; S.schedAt = 0;
   S.lastFetch = 0;
-  app.classList.remove("heads","go");
 }
 
 /* ------------------------------------------------------------------ *
@@ -466,37 +390,6 @@ function relevant(){
 }
 
 
-/* ---------- target lock ---------- */
-function pickTarget(){
-  const now = Date.now();
-  const lead = (CFG[L().id].walk + CFG[L().id].buffer) * 60000;
-  // Live predictions only. A scheduled time is good enough to plan around
-  // but not to sound an alarm on.
-  const cands = relevant();
-  if(!cands.length){ S.lockEpoch=null; return null; }
-  if(S.lockEpoch){
-    let best=null, bd=Infinity;
-    for(const c of cands){ const d=Math.abs(c.epoch-S.lockEpoch); if(d<bd){bd=d;best=c;} }
-    if(best && bd < 150000 && best.epoch - now > -60000){ S.lockEpoch = best.epoch; return best; }
-    // The locked train hasn't arrived yet but its prediction jumped more
-    // than 2.5 minutes later: that's a delay, not a new train. Follow it and
-    // keep the alerts already given, so you aren't told to go twice.
-    if(S.lockEpoch > now){
-      const later = cands.find(c => c.epoch > S.lockEpoch && c.epoch - S.lockEpoch <= 10*60000);
-      if(later){ S.lockEpoch = later.epoch; return later; }
-    }
-  }
-  // The first train you can make with your buffer; failing that, one you can
-  // still make if you skip the buffer. A train you can't reach even by
-  // leaving now is never a target, so it never sets off the Go alert.
-  const walkMs = CFG[L().id].walk * 60000;
-  const fresh = cands.find(c => c.epoch - now >= lead) || cands.find(c => c.epoch - now >= walkMs);
-  if(!fresh){ S.lockEpoch=null; return null; }
-  S.lockEpoch = fresh.epoch;
-  S.headsFired=false; S.goFired=false;
-  return fresh;
-}
-
 /* ---------- render ---------- */
 // Train and timetable text comes from WMATA; escape it before it goes into
 // the page.
@@ -537,8 +430,8 @@ function render(){
   const all = live.concat(fill).sort((a,b)=>a.epoch-b.epoch);
   const list = all.filter(t => t.epoch <= horizon);
   const furthest = live.length ? Math.round((liveFurthest - Date.now())/60000) : 0;
-  const target = pickTarget();
-  const walk = CFG[leg.id].walk, buf = CFG[leg.id].buffer;
+  // The hero shows the next train that hasn't left yet.
+  const target = list.find(t => t.epoch - Date.now() > -30000) || null;
   const ride = S.ride[leg.id] || 0;
 
   if(!list.length){
@@ -552,15 +445,12 @@ function render(){
     $("empty").style.display="none";
     setRows(list.map(t=>{
       const out = (t.epoch - Date.now())/60000;
-      // "Too soon" when you couldn't reach the platform even skipping the buffer.
-      const tooSoon = out < walk;
-      const isT = target && Math.abs(t.epoch - S.lockEpoch) < 30000;
+      const isT = t === target;
       const mm = out < 1 ? (out < 0.3 ? "Boarding" : "Arriving") : Math.floor(out) + " min";
       const arr = ride ? t.epoch + ride*60000 : null;
-      const note = isT ? "Your train" : tooSoon ? "Too soon to make"
-                 : t.scheduled ? "Scheduled" : (t.car && !arr ? "Live · " + t.car + " cars" : "Live");
+      const note = t.scheduled ? "Scheduled" : (t.car && !arr ? "Live · " + t.car + " cars" : "Live");
       const when = arr ? fmtHM(new Date(t.epoch)) + " → " + fmtClock(new Date(arr)) : fmtClock(new Date(t.epoch));
-      return '<div class="row' + (tooSoon ? " past" : "") + (isT ? " target" : "") + (t.scheduled ? " sched" : "") + '">' +
+      return '<div class="row' + (isT ? " target" : "") + (t.scheduled ? " sched" : "") + '">' +
         '<span class="ln">' + esc(t.line) + '</span>' +
         '<div class="mid"><span class="dest">to ' + esc(t.dest) + '</span>' +
         '<span class="note">' + when + ' · ' + note + '</span></div>' +
@@ -587,53 +477,23 @@ function render(){
   $("statusline").textContent = chip;
   $("updated").textContent = feedNote;
 
-  // The board shows the next train you can still make. There is no on-screen
-  // countdown; the heads-up and Go alerts still fire from when you need to
-  // leave (arrival − walk − buffer), which isn't displayed.
-  paintWeather(target ? S.lockEpoch : Date.now());
+  paintWeather(target ? target.epoch : Date.now());
 
   if(!target){
     $("arrive").textContent = "";
-    $("lede").textContent = "NEXT TRAIN YOU CAN MAKE";
     $("count").textContent="—"; $("countunit").textContent="";
-    $("sub").textContent="Nothing catchable on the board.";
-    app.classList.remove("heads","go"); app.classList.add("idle");
+    $("sub").textContent="No trains on the board right now.";
+    app.classList.add("idle");
     return;
   }
   app.classList.remove("idle");
-  const boardTime = new Date(S.lockEpoch);
-  const [hm, ampm = ""] = fmtClock(boardTime).split(/\s+/);
-  const away = Math.floor((S.lockEpoch - Date.now())/60000);
-  const trainLine = "Blue Line to " + leg.toName + " · " + (away < 1 ? "arriving now" : away + " min away");
-  const detail = walk + " min walk + " + buf + " min buffer";
-  const secs = Math.floor((S.lockEpoch - (walk+buf)*60000 - Date.now())/1000);
+  const [hm, ampm = ""] = fmtClock(new Date(target.epoch)).split(/\s+/);
+  const away = Math.floor((target.epoch - Date.now())/60000);
   $("count").textContent = hm; $("countunit").textContent = ampm;
+  $("sub").textContent = "Blue Line to " + leg.toName + " · " +
+    (away < 1 ? "arriving now" : away + " min away") + (target.scheduled ? " · scheduled" : "");
   // Arrival = departure + WMATA's scheduled ride time; delays can shift it.
-  $("arrive").textContent = ride ? "Arrives " + leg.offName + " about " + fmtClock(new Date(S.lockEpoch + ride*60000)) : "";
-
-  if(Date.now() < S.goUntil || secs <= 0){
-    app.classList.remove("heads"); app.classList.add("go");
-    $("lede").textContent = "GO NOW";
-    $("sub").textContent = trainLine + ". " + leg.goSub;
-    if(!S.goFired){
-      S.goFired = true; S.goUntil = Date.now() + 120000;
-      chime("go");
-      notify("Leave now — " + fmtClock(boardTime) + " to " + leg.toName,
-             detail + " from " + leg.fromName + ".");
-    }
-  } else {
-    app.classList.remove("go");
-    $("sub").textContent = trainLine;
-    if(secs <= 120){
-      app.classList.add("heads");
-      $("lede").textContent = "TWO MINUTES — WRAP UP";
-      if(!S.headsFired){ S.headsFired=true; chime("heads");
-        notify("Two minutes", "Wrap up — " + fmtClock(boardTime) + " train to " + leg.toName + "."); }
-    } else {
-      app.classList.remove("heads");
-      $("lede").textContent = "NEXT TRAIN YOU CAN MAKE";
-    }
-  }
+  $("arrive").textContent = ride ? "Arrives " + leg.offName + " about " + fmtClock(new Date(target.epoch + ride*60000)) : "";
 }
 
 // Weather strip: the hour your train leaves (or now), plus today's range.
@@ -652,35 +512,18 @@ function paintWeather(at){
 }
 
 /* ---------- loops ---------- */
-// Milliseconds until you need to leave for the train we're locked onto,
-// or null when nothing is locked.
-function msToLeave(){
-  if(!S.lockEpoch) return null;
-  const leg = L();
-  return S.lockEpoch - Date.now() - (CFG[leg.id].walk+CFG[leg.id].buffer)*60000;
-}
-// While the board can't be seen (minimized, another tab, phone locked) stop
-// calling WMATA — unless leaving is under 15 minutes away, so the heads-up
-// and Go alerts still fire on fresh data. Windows can report a board that's
-// merely covered by other windows as hidden, which is why the alerts can't
-// simply stop. Coming back into view refreshes straight away.
-function pausedWhileHidden(){
-  if(!document.hidden) return false;
-  const t = msToLeave();
-  return t === null || t > 15*60000;
-}
+// The fastest refresh while a train is under 5 minutes out; half as often
+// otherwise. While the board can't be seen (minimized, another tab, phone
+// locked) WMATA isn't called at all; coming back into view refreshes at once.
 function pollInterval(){
   if(S.errCount > 0) return Math.max(0, S.nextTry - S.lastFetch);
   const base = CFG.poll*1000;
-  const toLeave = msToLeave();
-  if(toLeave === null) return base*3;
-  if(toLeave < 5*60000)  return base;
-  if(toLeave < 15*60000) return base*2;
-  return base*3;
+  const soon = relevant().some(t => t.epoch - Date.now() < 5*60000);
+  return soon ? base : base*2;
 }
 setInterval(render, 1000);
 setInterval(async ()=>{
-  if(pausedWhileHidden()) return;
+  if(document.hidden) return;
   if(Date.now() - S.schedAt > 600000) fetchSchedule();
   const legId = L().id, station = L().from;
   if(!S.ride[legId] && Date.now() - (S.rideTried[legId] || 0) > 60000) fetchRide();
@@ -690,36 +533,21 @@ setInterval(async ()=>{
 }, 1000);
 
 /* ---------- controls ---------- */
-// The board runs as soon as the page loads. Browsers won't play sound or
-// ask for notification permission until the user has interacted with the
-// page, so the first tap or keypress anywhere finishes that part. Until
-// then an "Enable sound" button shows that alerts will be silent.
+// The board runs as soon as the page loads.
 function startBoard(){
   setLeg(activeLegId(new Date()));   // settle AM/PM first, so the first replies aren't dropped as stale
-  S.headsFired=S.goFired=false; S.goUntil=0; S.lockEpoch=null;
-  try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
   holdScreen();
   fetchTrains(); fetchSchedule(); fetchRide(); fetchWeather();
-  unlockAudio(false);
   render();
 }
-function unlockAudio(fromGesture){
-  try{ if(actx && actx.state==="suspended") actx.resume().then(paintSound, paintSound); }catch(e){}
-  if(fromGesture){
-    if(CFG.notif && "Notification" in window && Notification.permission==="default") Notification.requestPermission();
-    holdScreen();
-    document.removeEventListener("pointerdown", onFirstGesture, true);
-    document.removeEventListener("keydown", onFirstGesture, true);
-  }
-  paintSound();
+// Some browsers only grant the screen wake lock after a tap.
+function onFirstGesture(){
+  holdScreen();
+  document.removeEventListener("pointerdown", onFirstGesture, true);
+  document.removeEventListener("keydown", onFirstGesture, true);
 }
-function paintSound(){
-  $("soundBtn").hidden = !CFG.snd || !actx || actx.state==="running";
-}
-function onFirstGesture(){ unlockAudio(true); }
 document.addEventListener("pointerdown", onFirstGesture, true);
 document.addEventListener("keydown", onFirstGesture, true);
-$("soundBtn").onclick = ()=>{ unlockAudio(true); chime("heads"); };
 
 function paintLegPick(){
   const id = L().id;
@@ -736,10 +564,6 @@ $("legAm").onclick   = ()=> chooseLeg("am");
 $("legPm").onclick   = ()=> chooseLeg("pm");
 
 function fillGear(){
-  for(const id of ["am","pm"]){
-    $(id+"_walk").value=CFG[id].walk; $(id+"_buffer").value=CFG[id].buffer;
-  }
-  $("snd").checked=CFG.snd; $("vol").value=CFG.vol; $("notif").checked=CFG.notif;
   $("poll").value=CFG.poll;
   $("awake").checked=CFG.keepAwake; $("look").value=CFG.lookAhead;
   $("tsize").value=String(CFG.textSize);
@@ -755,25 +579,15 @@ function num(id, lo, hi, current){
   return Math.min(hi, Math.max(lo, n));
 }
 $("closeGear").onclick=()=>{
-  for(const id of ["am","pm"]){
-    CFG[id].walk   = num(id+"_walk",   0, 60, CFG[id].walk);
-    CFG[id].buffer = num(id+"_buffer", 0, 20, CFG[id].buffer);
-  }
-  CFG.snd=$("snd").checked; CFG.notif=$("notif").checked;
-  CFG.vol = num("vol", 0, 100, CFG.vol);
   CFG.poll = num("poll", 10, 120, CFG.poll);
   CFG.keepAwake=$("awake").checked;
   CFG.lookAhead = num("look", 10, 120, CFG.lookAhead);
   CFG.textSize=+$("tsize").value||1; applyScale();
   if(CFG.keepAwake) holdScreen(); else dropScreen();
-  paintSound();
   saveCfg(); $("settings").classList.remove("open");
-  S.lockEpoch=null; S.headsFired=S.goFired=false; render();
+  render();
 };
 
-document.addEventListener("keydown", e=>{
-  if(e.key==="Escape"){ app.classList.remove("go","heads"); S.goUntil=0; }
-});
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 function applyScale(){ app.style.setProperty("--tscale", String(CFG.textSize||1)); }
 applyScale(); paintLegPick(); startBoard();
