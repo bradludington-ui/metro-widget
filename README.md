@@ -27,6 +27,23 @@ Stale or down.
 Light or dark follows your phone's or computer's own setting. ⚙ has a **Text size**
 control — Small / Normal / Large / Extra large — that scales the card and the rows.
 
+### Arrival times
+
+You ride Franconia-Springfield → Crystal City in the morning and back in the evening, so
+each train also shows when it gets you there: the card says "Arrives Crystal City about
+8:39 AM", and each row reads "8:20 → 8:39 AM". It's the departure plus WMATA's scheduled
+ride time between the two stations (`/api/ride`, cached for a week), so a delay en route
+can make it a few minutes late. Where you get off is `off` in `LEGS` in `index.html`.
+
+### Weather
+
+A strip under the card shows the forecast for the hour your train leaves — temperature,
+conditions and chance of rain — plus today's high and low, for where you're starting
+from (Franconia in the morning, Crystal City in the evening). It comes from
+[Open-Meteo](https://open-meteo.com/), which is free and needs no key or account, through
+`/api/weather` (cached for 30 minutes). If it can't be reached, the strip just doesn't
+show.
+
 ### How far ahead it shows
 
 ⚙ has a look-ahead window, default 60 minutes. WMATA's real-time API only predicts trains
@@ -276,6 +293,7 @@ after your locked train arrives.
 | `worker.js` | Worker entry point: WMATA proxy (`/api/trains`, `/api/schedule`) |
 | `tests/` | Automated tests (`node --test`) |
 | `schedule.js` | WMATA's published timetable (`/api/schedule`), which fills the board past the live prediction horizon |
+| `extras.js` | Ride time between your stations (`/api/ride`) and the weather (`/api/weather`) |
 | `manifest.webmanifest` | Makes it installable as a taskbar app |
 | `sw.js` | Service worker; required for installability, never caches train data |
 | `icon-192.png`, `icon-512.png` | App icons |

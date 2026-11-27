@@ -2,6 +2,7 @@
 // else to the static assets (index.html, sw.js, icons).
 
 import { scheduledDepartures, scheduleDiagnose } from "./schedule.js";
+import { rideMinutes, forecast } from "./extras.js";
 
 // WMATA's old shared demo key no longer works, so without a WMATA_KEY
 // secret there is nothing to call with. Say so plainly.
@@ -29,6 +30,12 @@ export default {
       if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
       try { return json(await scheduleDiagnose(env, station), 200); }
       catch (e) { return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200); }
+    }
+    if (url.pathname === "/api/ride") {
+      return ride(url, env);
+    }
+    if (url.pathname === "/api/weather") {
+      return weather(url);
     }
     // Not an API route — let the static assets handle it.
     return env.ASSETS.fetch(request);
@@ -82,6 +89,24 @@ async function schedule(url, env) {
   } catch (e) {
     return json({ error: String(e && e.message || e), needsOwnKey: !!e.needsOwnKey }, 200);
   }
+}
+
+// Scheduled ride time between the board's two stations, for arrival times.
+async function ride(url, env) {
+  const from = (url.searchParams.get("from") || "").toUpperCase();
+  const to = (url.searchParams.get("to") || "").toUpperCase();
+  if (!ALLOWED.has(from) || !ALLOWED.has(to) || from === to) return json({ error: "station not allowed" }, 400);
+  if (!env.WMATA_KEY) return json({ error: NO_KEY, noKey: true }, 200);
+  try { return json({ from, to, minutes: await rideMinutes(env, from, to) }, 200); }
+  catch (e) { return json({ error: String(e && e.message || e) }, 200); }
+}
+
+// Today's weather where the board's train leaves from. Open-Meteo needs no key.
+async function weather(url) {
+  const station = (url.searchParams.get("station") || "").toUpperCase();
+  if (!ALLOWED.has(station)) return json({ error: "station not allowed" }, 400);
+  try { return json(await forecast(station), 200); }
+  catch (e) { return json({ error: String(e && e.message || e) }, 200); }
 }
 
 function json(body, status) {
