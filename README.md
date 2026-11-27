@@ -14,16 +14,18 @@ Tap **AM** or **PM** in the footer to check the other direction — useful for a
 or an early departure. Your pick holds until the next noon or midnight, then the board goes
 back to following the clock, so a board left open all day still flips to PM at noon.
 
-### Readability
+### The look
 
-⚙ has a **Text size** control — Small / Normal / Large / Extra large. Everything on the
-board scales together: rows, destination, the minutes column, and your train's time.
+A card at the top shows **your train** — the next one you can still make — in large type,
+with where it's going and how many minutes away it is. It's blue normally, turns amber two
+minutes before you need to leave, red and pulsing when it's time to go, and grey when
+nothing on the board is catchable. Below it, each upcoming train is a row: destination,
+time, minutes away, and a note — **Your train**, **Too soon to make**, **Live** (with the
+number of cars) or **Scheduled**. A chip in the header says whether the feed is Live,
+Stale or down.
 
-Two things were making the board harder to read than it needed to be, both now fixed:
-the dot-matrix scanline overlay was set at 0.75 opacity in multiply blend, which dimmed
-the text it sat on top of; and rows for trains you can no longer catch were drawn in a
-very dark amber that was close to invisible against the black board. The overlay is much
-lighter now and the dimmed rows are a legible muted amber.
+Light or dark follows your phone's or computer's own setting. ⚙ has a **Text size**
+control — Small / Normal / Large / Extra large — that scales the card and the rows.
 
 ### How far ahead it shows
 
@@ -34,16 +36,16 @@ served at `/api/schedule`):
 
 - Live predictions come first. Timetable trains are only added after the last live
   train, and never within a couple of minutes of one, so the same train doesn't show twice.
-- Timetable rows are tagged **SCH** in the car column and drawn in a softer amber.
+- Timetable rows are marked **Scheduled** where live ones say **Live**.
 - Alerts only follow live trains. A timetable time is fine for planning, but "your train",
   the chime and the Go flash wait until WMATA is actually tracking the train.
 
-The METRO strip says what you're looking at: "live to 18 min, then timetable" when the
+A line above the train list says what you're looking at: "live to 18 min, then timetable" when the
 timetable is filling in, or "WMATA predicting 27 min out" when there's no timetable data
 and live coverage stops short of your window.
 
 The timetable needs your own WMATA key, and possibly a GTFS subscription as well (see
-[The timetable](#the-timetable)). Until it's available the strip says why
+[The timetable](#the-timetable)). Until it's available that line says why
 ("no WMATA key set" or "timetable refused — GTFS subscription?") and the board shows live
 predictions only.
 
@@ -95,7 +97,7 @@ calls a day. Plenty of headroom.
 ### The timetable
 
 Filling the board past WMATA's 15–20 minute live horizon needs WMATA's timetable download
-(GTFS), which may be a separate product from Default Tier. If the METRO strip says
+(GTFS), which may be a separate product from Default Tier. If the line above the train list says
 "timetable refused — GTFS subscription?" after you've added your key, look under
 **Products** for a GTFS product and subscribe to it with the same account. (With the key
 from October 2026, Default Tier covered it.) `/api/schedule/debug?station=J03`
@@ -104,7 +106,7 @@ shows WMATA's exact answer. See [How far ahead it shows](#how-far-ahead-it-shows
 ### No key set
 
 Without a `WMATA_KEY` secret the Worker doesn't call WMATA at all: the board says
-"No WMATA key set" with where to add it, and the METRO strip says the same.
+"No WMATA key set" with where to add it, and the line above the train list says the same.
 
 ---
 
@@ -195,7 +197,7 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
 - It starts on its own. Open the page (or launch the installed app) and it begins watching
   trains — there's no Start button.
 - **Tap once to turn sound on.** Browsers won't play sound or ask for notification
-  permission until you've interacted with the page. Until you do, a **🔇 Sound** button sits
+  permission until you've interacted with the page. Until you do, a **Sound off** button sits
   in the footer as a reminder; the first tap or keypress anywhere enables the chime, asks
   for notification permission and hides the button. The red screen flash works without it.
 - It tracks trains whenever it's open — mornings show **AM**, afternoons and evenings show
@@ -243,9 +245,9 @@ Three states:
 
 | State | When | What happens |
 |---|---|---|
-| Tracking | normal | Your train's time in amber, quiet |
-| Two minutes | 2 minutes before you need to leave | Board warms, "Two minutes — wrap up", single soft chime, notification |
-| Go | time to leave | Whole widget flips red and pulses, "Go now", three-tone chime, notification |
+| Tracking | normal | Blue card with your train, quiet |
+| Two minutes | 2 minutes before you need to leave | Card turns amber, "Two minutes — wrap up", single soft chime, notification |
+| Go | time to leave | Card turns red and pulses, "Go now", three-tone chime, notification |
 
 The widget locks onto one train rather than always showing the soonest, so it doesn't
 jump around when WMATA revises its estimates. It rolls to the next train about a minute
