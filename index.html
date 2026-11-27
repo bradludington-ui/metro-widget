@@ -153,7 +153,7 @@
   </div>
 
   <div class="call">
-    <div class="lede" id="lede">LEAVE IN</div>
+    <div class="lede" id="lede">NEXT TRAIN YOU CAN MAKE</div>
     <div class="big"><em id="count">—</em><small id="countunit"></small></div>
     <div class="sub" id="sub">Not tracking yet.</div>
   </div>
@@ -171,7 +171,7 @@
 
   <div id="settings">
     <h2>Commute settings</h2>
-    <p class="hint">Countdown = train arrival − walk − buffer. At zero you get the full alert.</p>
+    <p class="hint">Your train is the first one you can reach after your walk and buffer. You get a chime two minutes before you need to leave, and the full alert when it's time to go.</p>
 
     <h3>Morning<span>Franconia-Springfield → Downtown Largo</span></h3>
     <div class="field"><label for="am_walk">Walk to platform (min)</label><input type="number" id="am_walk" min="0" max="60"></div>
@@ -206,13 +206,13 @@ const LEGS = {
   am: { id:"am",
         from:"J03", fromName:"Franconia-Spfld",
         toCode:"G05", toName:"Downtown Largo",
-        line:"BL", leaveLede:"LEAVE HOME IN", goSub:"Head out now.",
+        line:"BL", goSub:"Head out now.",
         headsign:"Downtown Largo",
         },
   pm: { id:"pm",
         from:"C09", fromName:"Crystal City",
         toCode:"J03", toName:"Franconia-Spfld",
-        line:"BL", leaveLede:"LEAVE DESK IN", goSub:"Shut it down and move.",
+        line:"BL", goSub:"Shut it down and move.",
         headsign:"Franconia-Springfield",
         }
 };
@@ -486,7 +486,6 @@ function pickTarget(){
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function fmtClock(d){ return d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
-function pad2(n){ return (n<10?"0":"")+n; }
 
 // The board renders every second, but rows only change when a minute ticks
 // over or new data arrives; skip rebuilding them when nothing changed.
@@ -502,7 +501,6 @@ function render(){
   paintLegPick();
   const leg = L();
   $("route").innerHTML = leg.fromName + ' <i>→</i> ' + leg.toName;
-  $("lede").textContent = leg.leaveLede;
 
   // Everything inside the look-ahead window. WMATA only predicts trains it
   // is actively tracking, so this is usually the real constraint, not us.
@@ -560,43 +558,46 @@ function render(){
   else feedNote = "updated " + fmtClock(new Date(S.lastFetch));
   $("statusline").textContent = "Live · " + feedNote;
 
+  // The board shows the next train you can still make. There is no on-screen
+  // countdown; the heads-up and Go alerts still fire from when you need to
+  // leave (arrival − walk − buffer), which isn't displayed.
   if(!target){
+    $("lede").textContent = "NEXT TRAIN YOU CAN MAKE";
     $("count").textContent="—"; $("countunit").textContent="";
     $("sub").textContent="Nothing catchable on the board.";
     app.classList.remove("heads","go");
     return;
   }
-  const pick = {
-    depart: S.lockEpoch,
-    leaveAt: S.lockEpoch - (walk+buf)*60000,
-    detail: walk + " min walk + " + buf + " min buffer",
-  };
-
-  const secs = Math.floor((pick.leaveAt - Date.now())/1000);
-  const boardTime = new Date(pick.depart);
+  const boardTime = new Date(S.lockEpoch);
+  const [hm, ampm = ""] = fmtClock(boardTime).split(/\s+/);
+  const away = Math.floor((S.lockEpoch - Date.now())/60000);
+  const trainLine = "Blue Line to " + leg.toName + " · " + (away < 1 ? "arriving now" : away + " min away");
+  const detail = walk + " min walk + " + buf + " min buffer";
+  const secs = Math.floor((S.lockEpoch - (walk+buf)*60000 - Date.now())/1000);
+  $("count").textContent = hm; $("countunit").textContent = ampm;
 
   if(Date.now() < S.goUntil || secs <= 0){
     app.classList.remove("heads"); app.classList.add("go");
     $("lede").textContent = "GO NOW";
-    $("count").textContent = "WALK"; $("countunit").textContent = "";
-    $("sub").textContent = "Train at " + fmtClock(boardTime) + " · " + pick.detail + ". " + leg.goSub;
+    $("sub").textContent = trainLine + ". " + leg.goSub;
     if(!S.goFired){
       S.goFired = true; S.goUntil = Date.now() + 120000;
       chime("go");
       notify("Leave now — " + fmtClock(boardTime) + " to " + leg.toName,
-             pick.detail + " from " + leg.fromName + ".");
+             detail + " from " + leg.fromName + ".");
     }
   } else {
     app.classList.remove("go");
-    $("lede").textContent = leg.leaveLede;
-    $("count").textContent = Math.floor(secs/60) + ":" + pad2(secs%60);
-    $("countunit").textContent = "min";
-    $("sub").textContent = "For the " + fmtClock(boardTime) + " train · " + pick.detail;
+    $("sub").textContent = trainLine;
     if(secs <= 120){
       app.classList.add("heads");
+      $("lede").textContent = "TWO MINUTES — WRAP UP";
       if(!S.headsFired){ S.headsFired=true; chime("heads");
         notify("Two minutes", "Wrap up — " + fmtClock(boardTime) + " train to " + leg.toName + "."); }
-    } else app.classList.remove("heads");
+    } else {
+      app.classList.remove("heads");
+      $("lede").textContent = "NEXT TRAIN YOU CAN MAKE";
+    }
   }
 }
 

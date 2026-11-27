@@ -1,7 +1,7 @@
 # Next Train — Blue Line commute board
 
-A small desk widget that watches WMATA's real-time Blue Line predictions, subtracts your
-walk time, and tells you when to move.
+A small desk widget that watches WMATA's real-time Blue Line predictions, shows the next
+train you can still make after your walk, and alerts you when it's time to move.
 
 It covers both directions of the day, picked by the clock:
 
@@ -17,7 +17,7 @@ back to following the clock, so a board left open all day still flips to PM at n
 ### Readability
 
 ⚙ has a **Text size** control — Small / Normal / Large / Extra large. Everything on the
-board scales together: rows, destination, the minutes column, and the countdown.
+board scales together: rows, destination, the minutes column, and your train's time.
 
 Two things were making the board harder to read than it needed to be, both now fixed:
 the dot-matrix scanline overlay was set at 0.75 opacity in multiply blend, which dimmed
@@ -35,8 +35,8 @@ served at `/api/schedule`):
 - Live predictions come first. Timetable trains are only added after the last live
   train, and never within a couple of minutes of one, so the same train doesn't show twice.
 - Timetable rows are tagged **SCH** in the car column and drawn in a softer amber.
-- Alerts only follow live trains. A timetable time is fine for planning, but the
-  countdown, chime and Go flash wait until WMATA is actually tracking the train.
+- Alerts only follow live trains. A timetable time is fine for planning, but "your train",
+  the chime and the Go flash wait until WMATA is actually tracking the train.
 
 The METRO strip says what you're looking at: "live to 18 min, then timetable" when the
 timetable is filling in, or "WMATA predicting 27 min out" when there's no timetable data
@@ -204,14 +204,14 @@ The free [Microsoft PowerToys](https://github.com/microsoft/PowerToys) "Always o
   turns off, phone browsers suspend web pages, so the chime and notification can't fire
   until you open it again. "Keep screen awake" in ⚙ holds the screen on while the board is
   open. On a desktop the alerts still fire when the window is covered by others.
-- The countdown only ever targets a train you can still make. If the next train leaves
-  before you could reach the platform, it's shown dimmed and the board says "Nothing
-  catchable" rather than telling you to run for it.
+- The board only ever picks a train you can still make. If the next train leaves before
+  you could reach the platform, it's shown dimmed and the board says "Nothing catchable"
+  rather than telling you to run for it.
 - `Esc` dismisses an active alert.
 
 ### Call volume
 
-The refresh setting in ⚙ is the *fastest* rate, used only when your countdown is under
+The refresh setting in ⚙ is the *fastest* rate, used only when you need to leave within
 five minutes. Further out it polls at half and then a third of that — about one call a
 minute while your train is still a way off.
 
@@ -224,26 +224,32 @@ Bringing it back into view refreshes immediately.
 On errors it backs off — 2x, 4x, 8x the base interval, capped at five minutes — and the
 status line tells you whether it's a rate limit or a dead connection.
 
-### How the countdown works
+### Your train and the alerts
+
+The bottom of the board shows **the next train you can make** — its time, how many minutes
+away it is, and where it's going. There's no on-screen countdown. Behind the scenes the
+board still works out when you need to leave:
 
 ```
-countdown = train arrival − walk time − safety buffer
+leave at = train arrival − walk time − safety buffer
 ```
 
-Defaults are an 8-minute walk and a 2-minute buffer, so a train 12 minutes out gives you a
-2:00 countdown. Change both in ⚙ once you've timed the walk from your desk.
+and uses that for the alerts. The first train whose leave time hasn't passed is "your
+train"; if only a train you could make by skipping the buffer is left, it picks that one.
+Defaults are a 6-minute walk in the morning and 8 in the evening, each with a 2-minute
+buffer. Change them in ⚙ once you've timed the walks.
 
 Three states:
 
-| State | Trigger | What happens |
+| State | When | What happens |
 |---|---|---|
-| Tracking | normal | Amber countdown, quiet |
-| Two minutes | countdown ≤ 2:00 | Board warms, single soft chime, notification |
-| Go | countdown hits 0:00 | Whole widget flips red and pulses, three-tone chime, Windows notification |
+| Tracking | normal | Your train's time in amber, quiet |
+| Two minutes | 2 minutes before you need to leave | Board warms, "Two minutes — wrap up", single soft chime, notification |
+| Go | time to leave | Whole widget flips red and pulses, "Go now", three-tone chime, notification |
 
-The widget locks onto one train rather than always showing the soonest, so the countdown
-doesn't jump around when WMATA revises its estimates. It rolls to the next train about a
-minute after your locked train arrives.
+The widget locks onto one train rather than always showing the soonest, so it doesn't
+jump around when WMATA revises its estimates. It rolls to the next train about a minute
+after your locked train arrives.
 
 ---
 
